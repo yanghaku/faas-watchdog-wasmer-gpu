@@ -24,9 +24,9 @@ pub(crate) struct WatchdogConfig {
     pub(crate) _tcp_port: u16,
 
     pub(crate) _http_read_timeout: Duration,
-    pub(crate) _http_write_timeout: std::time::Duration,
-    pub(crate) _exec_timeout: std::time::Duration,
-    pub(crate) _health_check_interval: std::time::Duration,
+    pub(crate) _http_write_timeout: Duration,
+    pub(crate) _exec_timeout: Duration,
+    pub(crate) _health_check_interval: Duration,
 
     pub(crate) _function_process: String,
     pub(crate) _content_type: String,

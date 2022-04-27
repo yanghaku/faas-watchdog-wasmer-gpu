@@ -19,7 +19,7 @@ impl From<usize> for WatchdogMode {
 }
 
 
-const WATCHDOG_MODE_STR: [&str; 7] = ["unknown", "streaming", "afterburn",
+pub(crate) const WATCHDOG_MODE_STR: [&str; 7] = ["unknown", "streaming", "afterburn",
     "serializing", "http", "static", "wasm"];
 
 

@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::{Result, Error};
 
 use crate::config::{WatchdogConfig, WatchdogMode};
+use crate::config::watchdog_mode::WATCHDOG_MODE_STR;
 
 
 const DEFAULT_PORT: u16 = 8080;
@@ -46,7 +47,19 @@ impl WatchdogConfig {
             parse_var(&vars, "exec_timeout").unwrap_or(DEFAULT_EXEC_TIMEOUT_SEC));
 
         let operational_mode = match vars.get("mode") {
-            Some(str) => WatchdogMode::from(str),
+            Some(str) => {
+                let mode = WatchdogMode::from(str);
+                if mode == WatchdogMode::ModeUnknown {
+                    let mut available_mode = String::new();
+                    for i in 1..WATCHDOG_MODE_STR.len() {
+                        available_mode += WATCHDOG_MODE_STR[i];
+                        available_mode += ",";
+                    }
+                    return Err(Error::msg(format!(
+                        "unknown watchdog mode: {} \navailable mode is [{}]", str, available_mode)));
+                }
+                mode
+            }
             _ => DEFAULT_MODE
         };
 

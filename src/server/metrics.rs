@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use anyhow::Result;
 use hyper::{Body, Request, Response, StatusCode};
 use crate::server::Handler;
@@ -7,11 +8,12 @@ use crate::WatchdogConfig;
 struct MetricsHandler {}
 
 impl Handler for MetricsHandler {
-    fn handle(&mut self, req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+    fn handle(&self, req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
         let mut response = Response::default(); // default is 200 OK
         match req.uri().path() {
             "/metrics" => {
-                todo!()
+                // todo: impl it
+                *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
             }
             _ => {
                 *response.status_mut() = StatusCode::NOT_FOUND;
@@ -22,6 +24,6 @@ impl Handler for MetricsHandler {
 }
 
 
-pub(crate) fn make_handler(_config: WatchdogConfig) -> Result<impl Handler + Send> {
-    Ok(MetricsHandler {})
+pub(super) fn make_handler(_config: WatchdogConfig) -> Result<Arc<dyn Handler + Send + Sync>> {
+    Ok(Arc::new(MetricsHandler {}))
 }

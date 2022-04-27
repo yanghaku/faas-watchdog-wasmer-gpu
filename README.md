@@ -1,7 +1,7 @@
 <div style="text-align: center">
 	<h1>faas-watchdog-wasmer-gpu</h1>
 	<p>
-    <a href="https://github.com/yanghaku/faas-watchdog-wasmer-gpu/blob/master/LICENSE">
+    <a href="https://github.com/yanghaku/faas-watchdog-wasmer-gpu/blob/main/LICENSE">
 	    <img src="https://img.shields.io/badge/license-Apache-brightgreen" alt="License">
     </a>
 	<img src="https://img.shields.io/badge/test-passing-brightgreen" alt="Test Status">

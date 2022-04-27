@@ -1,4 +1,7 @@
-use crate::runner::{FunctionRequest, Runner};
+use anyhow::Result;
+use hyper::{Body, Request, Response};
+use crate::runner::{Runner, WasmRunner};
+use crate::WatchdogConfig;
 
 /// compile the wasm module to native dylib
 mod compiler;
@@ -6,17 +9,18 @@ mod compiler;
 pub(crate) struct Compiler {}
 
 
-pub(crate) struct WasmRunner {}
-
-
 impl Runner for WasmRunner {
-    fn run(&mut self, _: &mut FunctionRequest) {
-        todo!()
+    fn run(&self, req: &mut Request<Body>, res: &mut Response<Body>) -> Result<()> {
+        *res.body_mut() = Body::from(format!("{:?}", req));
+
+        Ok(())
     }
 }
 
+
 impl WasmRunner {
-    pub(crate) fn new() -> Self {
-        Self {}
+    pub(crate) fn new(config: WatchdogConfig) -> Result<Self> {
+        eprintln!("{:?}", config);
+        Ok(Self {})
     }
 }

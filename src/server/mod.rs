@@ -3,6 +3,7 @@ mod metrics;
 
 
 use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
 use std::thread;
 
 use anyhow::Result;
@@ -15,7 +16,7 @@ use crate::WatchdogConfig;
 
 
 pub(crate) trait Handler {
-    fn handle(&mut self, _: Request<Body>) -> Result<Response<Body>, hyper::Error>;
+    fn handle(&self, _: Request<Body>) -> Result<Response<Body>, hyper::Error>;
 }
 
 
@@ -30,11 +31,10 @@ pub(crate) fn start_server(config: WatchdogConfig) -> Result<()> {
 
     let watchdog_addr = SocketAddr::new(default_ip.clone(), config._tcp_port);
     let metrics_addr = SocketAddr::new(default_ip, config._metrics_port);
-    println!("Listening on http://{}", watchdog_addr);
-    println!("Metrics listening on port: {}", config._metrics_port);
 
 
     let metrics_handler = metrics::make_handler(config.clone())?;
+    println!("Metrics listening on port: {}", config._metrics_port);
     // start the metrics server in another thread
     thread::Builder::new().spawn(move || {
         build_and_serve("metrics", metrics_addr, metrics_handler);
@@ -43,6 +43,7 @@ pub(crate) fn start_server(config: WatchdogConfig) -> Result<()> {
 
     // generate the request handler
     let watchdog_handler = watchdog::make_handler(config)?;
+    println!("Listening on http://{}", watchdog_addr);
     // block in current thread
     build_and_serve("watchdog", watchdog_addr, watchdog_handler);
 
@@ -51,20 +52,23 @@ pub(crate) fn start_server(config: WatchdogConfig) -> Result<()> {
 
 
 /// build the server for given handler and block to listen connections
-fn build_and_serve<H: 'static + Handler + Send>(name: &'static str, addr: SocketAddr, mut handler: H) {
-    // todo: fix the FnOnce to FnMut
-    let service = move |req: _| async move {
-        handler.handle(req)
-    };
-
+fn build_and_serve(name: &'static str, addr: SocketAddr, handler: Arc<dyn Handler + Send + Sync>) {
     runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap()
         .block_on(async move {
             Server::bind(&addr)
-                .serve(make_service_fn(|_| async move {
-                    Ok::<_, hyper::Error>(service_fn(service))
+                .serve(make_service_fn(move |_| {
+                    let h = handler.clone();
+                    async move {
+                        Ok::<_, hyper::Error>(service_fn(move |req: _| {
+                            let hh = h.clone();
+                            async move {
+                                hh.handle(req)
+                            }
+                        }))
+                    }
                 }))
                 .with_graceful_shutdown(shutdown_signal(name)).await
         }).unwrap();
