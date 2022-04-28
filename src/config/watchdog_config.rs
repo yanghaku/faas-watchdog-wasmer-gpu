@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Duration;
-use anyhow::{Result, Error};
+use anyhow::{anyhow, Result};
 
-use crate::config::{WatchdogConfig, WatchdogMode};
-use crate::config::watchdog_mode::WATCHDOG_MODE_STR;
+use super::{WatchdogConfig, WatchdogMode};
+use super::watchdog_mode::WATCHDOG_MODE_STR;
+
+#[cfg(feature = "wasm")]
+use crate::runner::wasm_runner::{KEY_WASM_C_CPU_FEATURES, KEY_WASM_C_TARGET_TRIPLE, KEY_WASM_ROOT};
 
 
 const DEFAULT_PORT: u16 = 8080;
@@ -14,7 +17,6 @@ const DEFAULT_EXEC_TIMEOUT_SEC: u64 = 10;
 const DEFAULT_MODE: WatchdogMode = WatchdogMode::ModeStreaming;
 const DEFAULT_CONTENT_TYPE: &str = "application/octet-stream";
 const DEFAULT_STATIC_PATH: &str = "/home/app/public";
-const DEFAULT_WASM_ROOT: &str = "/wasm_root";
 const DEFAULT_SUPPRESS_LOCK: bool = false;
 const DEFAULT_MAX_INFLIGHT: i32 = 0;
 const DEFAULT_BUFFER_HTTP: bool = false;
@@ -35,7 +37,7 @@ impl WatchdogConfig {
         let http_write_timeout = Duration::from_secs(
             parse_var(&vars, "write_timeout").unwrap_or(DEFAULT_WRITE_TIMEOUT_SEC));
         if http_write_timeout.is_zero() {
-            return Err(Error::msg("HTTP write timeout must be over 0s."));
+            return Err(anyhow!("HTTP write timeout must be over 0s."));
         }
 
         let health_check_interval = match parse_var(&vars, "healthcheck_interval") {
@@ -55,8 +57,7 @@ impl WatchdogConfig {
                         available_mode += WATCHDOG_MODE_STR[i];
                         available_mode += ",";
                     }
-                    return Err(Error::msg(format!(
-                        "unknown watchdog mode: {} \navailable mode is [{}]", str, available_mode)));
+                    return Err(anyhow!("unknown watchdog mode: {} \navailable mode is [{}]", str, available_mode));
                 }
                 mode
             }
@@ -73,7 +74,7 @@ impl WatchdogConfig {
                             // the static mode does not need function name
                             String::default()
                         } else {
-                            return Err(Error::msg(
+                            return Err(anyhow!(
                                 "Please provide a \"function_process\" or \"fprocess\" \
                                     environmental variable for your function."));
                         }
@@ -93,8 +94,6 @@ impl WatchdogConfig {
         let static_path = parse_var(&vars, "static_path").unwrap_or(
             DEFAULT_STATIC_PATH.to_string());
 
-        let wasm_root = parse_var(&vars, "wasm_root").unwrap_or(
-            DEFAULT_WASM_ROOT.to_string());
 
         let suppress_lock = parse_var(&vars, "suppress_lock").unwrap_or(DEFAULT_SUPPRESS_LOCK);
         let max_inflight = parse_var(&vars, "max_inflight").unwrap_or(DEFAULT_MAX_INFLIGHT);
@@ -108,10 +107,10 @@ impl WatchdogConfig {
 
         // check
         if operational_mode == WatchdogMode::ModeHTTP && upstream_url.is_none() {
-            return Err(Error::msg("For \"mode=http\" you must specify a valid URL for \"http_upstream_url\""));
+            return Err(anyhow!("For \"mode=http\" you must specify a valid URL for \"http_upstream_url\""));
         }
         if operational_mode == WatchdogMode::ModeStatic && static_path == "" {
-            return Err(Error::msg("For mode=static you must specify the \"static_path\" to serve"));
+            return Err(anyhow!("For mode=static you must specify the \"static_path\" to serve"));
         }
 
         Ok(Self {
@@ -132,7 +131,13 @@ impl WatchdogConfig {
             _max_inflight: max_inflight,
             _prefix_logs: prefix_logs,
             _log_buffer_size: log_buffer_size,
-            _wasm_root: wasm_root,
+
+            #[cfg(feature = "wasm")]
+            _wasm_root: parse_var(&vars, KEY_WASM_ROOT),
+            #[cfg(feature = "wasm")]
+            _wasm_c_target_triple: parse_var(&vars, KEY_WASM_C_TARGET_TRIPLE),
+            #[cfg(feature = "wasm")]
+            _wasm_c_cpu_features: parse_var(&vars, KEY_WASM_C_CPU_FEATURES),
         })
     }
 }
@@ -187,7 +192,8 @@ mod test {
             assert_eq!(cfg._max_inflight, DEFAULT_MAX_INFLIGHT);
             assert_eq!(cfg._prefix_logs, DEFAULT_PREFIX_LOGS);
             assert_eq!(cfg._log_buffer_size, DEFAULT_LOG_BUFFER_SIZE);
-            assert_eq!(cfg._wasm_root, DEFAULT_WASM_ROOT);
+            #[cfg(feature = "wasm")]
+            assert_eq!(cfg._wasm_root, None);
         }
     }
 

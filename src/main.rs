@@ -30,21 +30,37 @@ mod server;
 
 
 use std::collections::HashMap;
+use std::io::Write;
 use std::process::exit;
 use std::env::{vars_os, args};
+use std::time::SystemTime;
 
-use anyhow::{Result, Error};
+use anyhow::{anyhow, Result};
+use chrono::{DateTime, SecondsFormat};
+use log::{error, info};
 
 use crate::config::WatchdogConfig;
 use crate::health::{lock_file_present, mark_healthy, mark_unhealthy};
 use crate::server::start_server;
 
 #[cfg(feature = "wasm")]
-use crate::runner::wasm_runner::Compiler;
+use crate::runner::wasm_runner::{Compiler, KEY_WASM_C_TARGET_TRIPLE, KEY_WASM_C_CPU_FEATURES};
 
 
 /// main function for watchdog
 fn main() {
+    // set up log
+    let log_level = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "info"
+    };
+    let env = env_logger::Env::default().default_filter_or(log_level);
+    env_logger::Builder::from_env(env).format(|buf, record| {
+        let now = DateTime::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Millis, true);
+        writeln!(buf, "[watchdog {} {}] {}", now, record.level(), record.args())
+    }).init();
+
     // skip the no-UTF8 env var
     let vars = vars_os().filter_map(|(k_os, v_os)| {
         match (k_os.into_string(), v_os.into_string()) {
@@ -56,13 +72,12 @@ fn main() {
     let exit_code = match run(args().collect(), vars) {
         Ok(_) => 0,
         Err(e) => {
-            eprintln!("{}", e);
+            error!("{}", e);
             1
         }
     };
 
-    #[cfg(debug_assertions)]
-    println!("[INFO] watchdog exit with status {}", exit_code);
+    info!("watchdog exit with status {}", exit_code);
 
     exit(exit_code);
 }
@@ -71,7 +86,7 @@ fn main() {
 /// process the argument with given environment variables
 fn run(args: Vec<String>, env: HashMap<String, String>) -> Result<()> {
     let bin_path = args.get(0).ok_or(
-        Error::msg("Cannot resolve the first argument"))?;
+        anyhow!("Cannot resolve the first argument"))?;
 
     match args.get(1).unwrap_or(&"".to_string()).as_str() {
         #[cfg(feature = "wasm")]
@@ -85,14 +100,17 @@ fn run(args: Vec<String>, env: HashMap<String, String>) -> Result<()> {
                 // print help msg and report syntax error
                 print_helper(bin_path);
                 return if in_file.is_none() {
-                    Err(Error::msg("The following required arguments were not provided:\n\
+                    Err(anyhow!("The following required arguments were not provided:\n\
                       <IN_FILE> -o <OUT_FILE>\n"))
                 } else {
-                    Err(Error::msg("The following required arguments were not provided:\n\
+                    Err(anyhow!("The following required arguments were not provided:\n\
                       -o <OUT_FILE>\n"))
                 };
             }
-            Compiler::default().do_compile(in_file.unwrap(), out_file.unwrap())?
+            let triple = env.get(KEY_WASM_C_TARGET_TRIPLE).cloned();
+            let cpu_features = env.get(KEY_WASM_C_CPU_FEATURES).cloned();
+            return Compiler::new(triple, cpu_features)?
+                .compile_to_file(in_file.unwrap(), out_file.unwrap());
         }
 
         "-v" | "--version" => {
@@ -107,7 +125,7 @@ fn run(args: Vec<String>, env: HashMap<String, String>) -> Result<()> {
             return if lock_file_present() {
                 Ok(())
             } else {
-                Err(Error::msg("Unable to find lock file."))
+                Err(anyhow!("Unable to find lock file."))
             };
         }
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use anyhow::Result;
 use hyper::{Body, Request, Response, StatusCode};
-use crate::server::Handler;
+use super::Handler;
 use crate::WatchdogConfig;
 
 

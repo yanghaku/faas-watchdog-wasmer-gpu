@@ -1,3 +1,6 @@
+/// some help function
+mod utils;
+
 /// for wasm mode
 #[cfg(feature = "wasm")]
 pub(crate) mod wasm_runner;
@@ -26,7 +29,16 @@ pub(crate) trait Runner {
 
 
 #[cfg(feature = "wasm")]
-pub(crate) struct WasmRunner;
+pub(crate) struct WasmRunner {
+    /// compiled wasm module
+    _module: wasmer::Module,
+
+    /// the function process and arguments
+    _func_process: Vec<String>,
+
+    /// workplace root directory
+    _wasm_root: std::path::PathBuf,
+}
 
 
 pub(crate) struct ForkingRunner;

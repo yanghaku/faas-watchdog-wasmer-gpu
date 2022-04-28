@@ -1,6 +1,6 @@
 use core::fmt::Display;
 use std::fmt::Formatter;
-use crate::config::WatchdogMode;
+use super::WatchdogMode;
 
 
 impl From<usize> for WatchdogMode {

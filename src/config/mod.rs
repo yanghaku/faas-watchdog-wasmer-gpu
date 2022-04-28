@@ -54,5 +54,14 @@ pub(crate) struct WatchdogConfig {
     pub(crate) _log_buffer_size: i32,
 
     /// The root directory for wasm file system
-    pub(crate) _wasm_root: String,
+    #[cfg(feature = "wasm")]
+    pub(crate) _wasm_root: Option<String>,
+
+    /// WebAssembly compile target triple
+    #[cfg(feature = "wasm")]
+    pub(crate) _wasm_c_target_triple: Option<String>,
+
+    /// WebAssembly compile target cpu features
+    #[cfg(feature = "wasm")]
+    pub(crate) _wasm_c_cpu_features: Option<String>,
 }

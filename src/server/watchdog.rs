@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use hyper::{Body, Method, Request, Response, StatusCode};
+use log::error;
 
+use super::Handler;
 use crate::config::WatchdogMode;
-use crate::server::Handler;
 use crate::WatchdogConfig;
 use crate::health::check_healthy;
 use crate::runner::{ForkingRunner, HttpRunner, Runner, SerializingForkRunner, StaticFileProcessor};
@@ -27,7 +28,7 @@ impl<R> Handler for WatchdogHandler<R> where R: Runner {
                 match req.uri().path() {
                     "/" => {
                         if let Err(ref err) = self.runner.run(&mut req, &mut response) {
-                            eprintln!("{}", err.to_string());
+                            error!("{}", err.to_string());
                         }
                     }
                     "/_/health" => { // check healthy
@@ -70,11 +71,15 @@ pub(super) fn make_handler(config: WatchdogConfig) -> Result<Arc<dyn Handler + S
         WatchdogMode::ModeSerializing =>
             Ok(Arc::new(WatchdogHandler { runner: SerializingForkRunner::new(config)? })),
 
-        #[cfg(feature = "wasm")]
-        WatchdogMode::ModeWasm =>
-            Ok(Arc::new(WatchdogHandler { runner: WasmRunner::new(config)? })),
+        WatchdogMode::ModeWasm => {
+            #[cfg(feature = "wasm")]{
+                Ok(Arc::new(WatchdogHandler { runner: WasmRunner::new(config)? }))
+            }
+            #[cfg(not(feature = "wasm"))]{
+                Err(anyhow!("`wasm` feature doest not be enable"))
+            }
+        }
 
-        _ => Err(anyhow::Error::msg(
-            format!("watchdog mode {} is not yet implemented", config._operational_mode)))
+        _ => Err(anyhow!("watchdog mode {} is not yet implemented", config._operational_mode))
     };
 }

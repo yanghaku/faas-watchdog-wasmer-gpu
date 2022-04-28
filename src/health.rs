@@ -7,7 +7,8 @@ use std::os::unix::fs::PermissionsExt;
 #[cfg(unix)]
 use std::fs::Permissions;
 
-use anyhow::{Error, Result};
+use anyhow::{anyhow, Result};
+use log::warn;
 
 
 /// the lock filename for health check
@@ -44,14 +45,13 @@ pub(crate) fn mark_healthy(suppress_lock: bool) -> Result<()> {
     ACCEPTING_CONNECTIONS.store(true, Ordering::Release);
 
     return if suppress_lock {
-        println!("Warning: \"suppress_lock\" is enabled. No automated health-checks will be in place for your function.");
+        warn!("Warning: \"suppress_lock\" is enabled. No automated health-checks will be in place for your function.");
         Ok(())
     } else {
         match create_lock_file() {
             Ok(_) => Ok(()),
-            Err(e) => Err(Error::msg(
-                format!("Cannot write {}. To disable lock-file set env suppress_lock=true.\n\
-                 Error: {}.\n", temp_dir().join(LOCK_FILE_NAME).display(), e.to_string())))
+            Err(e) => Err(anyhow!("Cannot write {}. To disable lock-file set env suppress_lock=true.\n\
+                 Error: {}.\n", temp_dir().join(LOCK_FILE_NAME).display(), e.to_string()))
         }
     };
 }
