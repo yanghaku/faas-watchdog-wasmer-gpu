@@ -43,7 +43,7 @@ use crate::config::WatchdogConfig;
 use crate::health::{lock_file_present, mark_healthy, mark_unhealthy};
 use crate::server::start_server;
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "compiler")]
 use crate::runner::wasm_runner::{Compiler, KEY_WASM_C_TARGET_TRIPLE, KEY_WASM_C_CPU_FEATURES};
 
 
@@ -89,7 +89,7 @@ fn run(args: Vec<String>, env: HashMap<String, String>) -> Result<()> {
         anyhow!("Cannot resolve the first argument"))?;
 
     match args.get(1).unwrap_or(&"".to_string()).as_str() {
-        #[cfg(feature = "wasm")]
+        #[cfg(feature = "compiler")]
         "-c" | "--compile" => {
             let in_file = args.get(2);
             let out_opt = args.get(3);
@@ -170,10 +170,15 @@ fn print_version() {
 /// print the help message
 #[inline(always)]
 fn print_helper(bin_path: &String) {
+    #[cfg(feature = "compiler")]
     println!("usage: {} [-c, --compile <IN_FILE> -o <OUT_FILE> ] [-v, --version] [-h, --help] [--run-healthcheck]", bin_path);
+
+    #[cfg(not(feature = "compiler"))]
+    println!("usage: {} [-v, --version] [-h, --help] [--run-healthcheck]", bin_path);
+
     println!("optional arguments:");
 
-    #[cfg(feature = "wasm")]
+    #[cfg(feature = "compiler")]
     println!("  -c, --compile <IN_FILE> -o <OUT_FILE>    Compile the wasm module to dylib and exit.");
 
     println!("  -v, --version                            Print the version and exit.");

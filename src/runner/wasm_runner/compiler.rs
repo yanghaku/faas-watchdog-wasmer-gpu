@@ -1,11 +1,17 @@
+#[cfg(feature = "compiler")]
 use std::fs;
+
 use std::path::PathBuf;
+
+#[cfg(feature = "compiler")]
 use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, Result};
 use log::{info, warn};
-use wasmer::{CpuFeature, Dylib, DylibArtifact, Engine, LLVM, Module, Store, Target, Triple};
+use wasmer::{Dylib, DylibArtifact, Module, Store, Triple};
 
+#[cfg(feature = "compiler")]
+use wasmer::{CpuFeature, Engine, LLVM, Target};
 
 pub(crate) struct Compiler {
     _store: Store,
@@ -17,6 +23,7 @@ pub(crate) struct Compiler {
 /// default engine is Dylib
 /// default compiler is LLVM
 impl Compiler {
+    #[cfg(feature = "compiler")]
     /// new compiler for given target triple and cpu_features
     pub(crate) fn new(target_triple: Option<String>, cpu_features: Option<String>) -> Result<Self> {
         // parse the target or use default native target
@@ -35,48 +42,89 @@ impl Compiler {
     }
 
 
-    /// if the wasm module has cached native binary file, return the deserialize module
+    #[cfg(not(feature = "compiler"))]
+    /// Create new compiler with headless engine
+    pub(crate) fn new(target_triple: Option<String>, cpu_features: Option<String>) -> Result<Self> {
+        if target_triple.is_some() {
+            warn!("No Compiler! environment variable `{}` is set but not used", super::KEY_WASM_C_TARGET_TRIPLE);
+        }
+        if cpu_features.is_some() {
+            warn!("No Compiler! environment variable `{}` is set but not used", super::KEY_WASM_C_CPU_FEATURES);
+        }
+
+
+        let engine = Dylib::headless().engine();
+        Ok(Self {
+            _store: Store::new(&engine),
+            _out_extension: DylibArtifact::get_default_extension(&Triple::host()),
+        })
+    }
+
+
+    /// if the wasm module has been compiled to native binary file, return the deserialize module
     /// else do compile and return the compiled module
     /// todo: add safety strategy for cached file
-    pub(crate) fn try_load_cached(&self, wasm_file: &PathBuf) -> Result<Module> {
-        let mut cached_file = wasm_file.clone();
-        cached_file.set_extension(self._out_extension);
+    #[allow(unused_mut)]
+    pub(crate) fn try_load_compiled(&self, mut wasm_file: PathBuf) -> Result<Module> {
+        #[cfg(feature = "compiler")]
+            let mut compiled_file = wasm_file.clone();
+        #[cfg(not(feature = "compiler"))]
+            let mut compiled_file = wasm_file; // just move
+
+        compiled_file.set_extension(self._out_extension);
 
         // judge if cached file exists and valid
-        if cached_file.is_file() {
+        if compiled_file.is_file() {
             // try deserialize the module from file
-            match unsafe { Module::deserialize_from_file(&self._store, &cached_file) } {
+            match unsafe { Module::deserialize_from_file(&self._store, &compiled_file) } {
                 Ok(module) => {
                     info!("Deserialize module from cached binary file success");
                     return Ok(module);
                 }
                 Err(e) => {
-                    warn!("Cached wasm binary file exist, but can not be loaded! error = {:?}", e);
+                    warn!("Compiled wasm module file `{}` exist, but can not be loaded! error = {:?}",
+                        compiled_file.display(), e);
                 }
             }
         }
 
-        info!("Compiling the webassembly module");
-        let wasm_bytes = fs::read(wasm_file)?;
-        let (module, duration) = self.do_compile(&wasm_bytes)?;
-        info!("Compile success, usage {} ms", duration.as_millis());
 
-        // try to serialize the module and save to cached file
-        match module.serialize_to_file(&cached_file) {
-            Ok(_) => {
-                info!("Serialize the module and save to cached file success");
-            }
-            Err(e) => {
-                warn!("Serialize the module and save to cached file fail! error = {:?}", e);
-            }
-        }
+        #[cfg(feature = "compiler")]
+        return {
+            info!("Compiling the webassembly module");
 
-        Ok(module)
+            wasm_file.set_extension("wasm");
+            let wasm_bytes = fs::read(wasm_file)?;
+            let (module, duration) = self.do_compile(&wasm_bytes)?;
+            info!("Compile success, usage {} ms", duration.as_millis());
+
+            // try to serialize the module and save to cached file
+            match module.serialize_to_file(&compiled_file) {
+                Ok(_) => {
+                    info!("Serialize the module and save to module file success");
+                }
+                Err(e) => {
+                    warn!("Serialize the module and save to module file fail! error = {:?}", e);
+                }
+            }
+
+            Ok(module)
+        };
+
+        // if no compiler, just return error msg
+        #[cfg(not(feature = "compiler"))]
+        return {
+            if !compiled_file.is_file() {
+                log::error!("Cannot find the webassembly file `{}`", compiled_file.display());
+            }
+            Err(anyhow!("Deserialize module fail and no compiler feature enable"))
+        };
     }
 
 
     /// do the compile stage, compile the wasm bytes to native code and return time duration
     #[inline(always)]
+    #[cfg(feature = "compiler")]
     pub(crate) fn do_compile(&self, bytes: &[u8]) -> Result<(Module, Duration)> {
         let start_time = SystemTime::now();
 
@@ -89,6 +137,7 @@ impl Compiler {
 
     /// compile from wasm file to dylib file
     #[inline(always)]
+    #[cfg(feature = "compiler")]
     pub(crate) fn compile_to_file(&self, in_file: &String, out_file: &String) -> Result<()> {
         // load wasm module file
         let wasm_bytes = fs::read(in_file)?;
@@ -122,6 +171,7 @@ impl Compiler {
     }
 
 
+    #[cfg(feature = "compiler")]
     fn parse_target(triple_opt: Option<String>, cpu_features_str: Option<String>) -> Result<Target> {
         let triple = match triple_opt {
             None => Triple::host(),

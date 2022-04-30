@@ -18,13 +18,22 @@ env_logger = { version = "0.9", default-features = false }
 hyper = { version = "0.14", default-features = false, features = ["server", "http1", "http2", "runtime"] }
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "signal"] }
 
-wasmer = { version = ">=2.2", optional = true, default-features = false, features = ["llvm", "dylib"] }
+wasmer = { version = ">=2.2", optional = true, default-features = false, features = ["dylib"] }
 wasmer-wasi = { version = ">=2.2", optional = true, default-features = false, features = ["host-fs", "sys", "disable-all-logging"] }
 wasmer-cuda = { version = "0.2.0-dev", optional = true, default-features = false, features = ["cuda-driver", "cuda-102"], git = "ssh://git@210.28.132.171/yangbo/wasmer-cuda.git" }
 
 
 [features]
-default = ["wasm-cuda"]
+default = []
+
+full = ["wasm-cuda", "compiler"]
 
 wasm = ["wasmer", "wasmer-wasi"]
-wasm-cuda = ["wasmer-cuda", "wasm"]
+compiler = ["wasm", "wasmer/llvm"]
+wasm-cuda = ["wasm", "wasmer-cuda"]
+
+[profile.release]
+strip = true  # Automatically strip symbols from the binary.
+lto = true
+codegen-units = 1
+

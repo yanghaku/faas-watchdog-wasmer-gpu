@@ -107,6 +107,8 @@ impl Runner for WasmRunner {
 impl WasmRunner {
     /// create a new wasm runner
     pub(crate) fn new(config: WatchdogConfig) -> Result<Self> {
+        let start_time = SystemTime::now();
+
         let wasm_root = PathBuf::from(match config._wasm_root {
             None => {
                 warn!("The environment variable `{}` is not specified, use the default path: `{}`", KEY_WASM_ROOT, DEFAULT_WASM_ROOT);
@@ -128,21 +130,21 @@ impl WasmRunner {
         };
 
 
-        let mut func_process = parse_command(&config._function_process)?;
+        let func_process = parse_command(&config._function_process)?;
 
-        let mut module_path = wasm_root.join(BIN_DIR).join(func_process[0].as_str());
-        // only use wasm as the function extension
-        module_path.set_extension("wasm");
-        func_process[0] = module_path.display().to_string();
-        debug!("Webassembly module path is `{}`", func_process[0]);
+        let module_path = wasm_root.join(BIN_DIR).join(func_process[0].as_str());
+        debug!("Webassembly module path is `{}`", module_path.display());
 
         let compiler = Compiler::new(config._wasm_c_target_triple, config._wasm_c_cpu_features)?;
-        let module = compiler.try_load_cached(&module_path)?;
+        let module = compiler.try_load_compiled(module_path)?;
 
         // default use cpu's numbers as thread pool's thread number
         let thread_num = num_cpus::get();
 
         let thread_pool = ThreadPool::new(thread_num, Some(func_process[0].clone()), None);
+
+        let duration = SystemTime::now().duration_since(start_time).unwrap();
+        info!("Deploy function {} took {} us  ({} ms)",func_process[0], duration.as_micros(), duration.as_millis());
 
         Ok(Self {
             _inner: Arc::new(WasmRunnerEntry {
