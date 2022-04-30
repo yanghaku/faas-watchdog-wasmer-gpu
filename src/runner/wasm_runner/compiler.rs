@@ -6,7 +6,11 @@ use anyhow::{anyhow, Result};
 use log::{info, warn};
 use wasmer::{CpuFeature, Dylib, DylibArtifact, Engine, LLVM, Module, Store, Target, Triple};
 
-use crate::runner::wasm_runner::Compiler;
+
+pub(crate) struct Compiler {
+    _store: Store,
+    _out_extension: &'static str,
+}
 
 
 /// The implementation for webassembly compiler wrapper
@@ -43,27 +47,27 @@ impl Compiler {
             // try deserialize the module from file
             match unsafe { Module::deserialize_from_file(&self._store, &cached_file) } {
                 Ok(module) => {
-                    info!("deserialize module from cached binary file success");
+                    info!("Deserialize module from cached binary file success");
                     return Ok(module);
                 }
                 Err(e) => {
-                    warn!("cached wasm binary file exist, but can not be loaded! error = {:?}", e);
+                    warn!("Cached wasm binary file exist, but can not be loaded! error = {:?}", e);
                 }
             }
         }
 
-        info!("compiling the webassembly module");
+        info!("Compiling the webassembly module");
         let wasm_bytes = fs::read(wasm_file)?;
         let (module, duration) = self.do_compile(&wasm_bytes)?;
-        info!("compile success, usage {} ms", duration.as_millis());
+        info!("Compile success, usage {} ms", duration.as_millis());
 
         // try to serialize the module and save to cached file
         match module.serialize_to_file(&cached_file) {
             Ok(_) => {
-                info!("serialize the module and save to cached file success");
+                info!("Serialize the module and save to cached file success");
             }
             Err(e) => {
-                warn!("serialize the module and save to cached file fail! error = {:?}", e);
+                warn!("Serialize the module and save to cached file fail! error = {:?}", e);
             }
         }
 
@@ -144,7 +148,7 @@ impl Compiler {
 #[cfg(test)]
 mod test {
     use wasmer::Target;
-    use crate::Compiler;
+    use super::Compiler;
 
     #[test]
     fn test_default() {

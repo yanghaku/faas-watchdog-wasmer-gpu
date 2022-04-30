@@ -16,7 +16,7 @@ use tokio::signal::ctrl_c;
 use crate::WatchdogConfig;
 
 
-pub(crate) trait Handler {
+trait Handler {
     fn handle(&self, _: Request<Body>) -> Result<Response<Body>, hyper::Error>;
 }
 
@@ -38,7 +38,8 @@ pub(crate) fn start_server(config: WatchdogConfig) -> Result<()> {
     info!("Metrics listening on port: {}", config._metrics_port);
     // start the metrics server in another thread
     thread::Builder::new().spawn(move || {
-        build_and_serve("metrics", metrics_addr, metrics_handler);
+        // metrics only use 1 threads
+        build_and_serve("metrics", metrics_addr, 1, metrics_handler);
     })?;
 
 
@@ -46,15 +47,17 @@ pub(crate) fn start_server(config: WatchdogConfig) -> Result<()> {
     let watchdog_handler = watchdog::make_handler(config)?;
     info!("Listening on http://{}", watchdog_addr);
     // block in current thread
-    build_and_serve("watchdog", watchdog_addr, watchdog_handler);
+    let num_thread = num_cpus::get(); // default use the cpus number as thread num
+    build_and_serve("watchdog", watchdog_addr, num_thread, watchdog_handler);
 
     Ok(())
 }
 
 
 /// build the server for given handler and block to listen connections
-fn build_and_serve(name: &'static str, addr: SocketAddr, handler: Arc<dyn Handler + Send + Sync>) {
-    runtime::Builder::new_current_thread()
+fn build_and_serve(name: &'static str, addr: SocketAddr, num_thread: usize, handler: Arc<dyn Handler + Send + Sync>) {
+    runtime::Builder::new_multi_thread()
+        .worker_threads(num_thread)
         .enable_all()
         .build()
         .unwrap()

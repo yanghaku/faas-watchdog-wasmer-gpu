@@ -12,12 +12,13 @@ build = "src/build.rs"
 [dependencies]
 anyhow = "1.0"
 log = "0.4"
+num_cpus = "1.13"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 env_logger = { version = "0.9", default-features = false }
 hyper = { version = "0.14", default-features = false, features = ["server", "http1", "http2", "runtime"] }
-tokio = { version = "1", default-features = false, features = ["rt", "signal"] }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "signal"] }
 
-wasmer = { version = ">=2.2", optional = true, default-features = false, features = ["default-llvm", "default-dylib"] }
+wasmer = { version = ">=2.2", optional = true, default-features = false, features = ["llvm", "dylib"] }
 wasmer-wasi = { version = ">=2.2", optional = true, default-features = false, features = ["host-fs", "sys", "disable-all-logging"] }
 wasmer-cuda = { version = "0.2.0-dev", optional = true, default-features = false, features = ["cuda-driver", "cuda-102"], git = "ssh://git@210.28.132.171/yangbo/wasmer-cuda.git" }
 

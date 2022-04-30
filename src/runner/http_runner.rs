@@ -1,11 +1,14 @@
 use anyhow::Result;
 use hyper::{Body, Request, Response};
-use crate::runner::{HttpRunner, Runner};
+use crate::runner::Runner;
 use crate::WatchdogConfig;
 
 
+pub(crate) struct HttpRunner;
+
+
 impl Runner for HttpRunner {
-    fn run(&self, _: &mut Request<Body>, _: &mut Response<Body>) -> Result<()> {
+    fn run(&self, _: Request<Body>, _: &mut Response<Body>) -> Result<()> {
         todo!()
     }
 }

@@ -37,7 +37,7 @@ use std::time::SystemTime;
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, SecondsFormat};
-use log::{error, info};
+use log::{debug, error, info};
 
 use crate::config::WatchdogConfig;
 use crate::health::{lock_file_present, mark_healthy, mark_unhealthy};
@@ -77,7 +77,7 @@ fn main() {
         }
     };
 
-    info!("watchdog exit with status {}", exit_code);
+    info!("Watchdog exit with status {}", exit_code);
 
     exit(exit_code);
 }
@@ -133,6 +133,7 @@ fn run(args: Vec<String>, env: HashMap<String, String>) -> Result<()> {
             print_version();
 
             let watchdog_config = WatchdogConfig::new(env)?;
+            debug!("{:?}", watchdog_config);
 
             mark_healthy(watchdog_config._suppress_lock)?;
             let res = start_server(watchdog_config);

@@ -20,35 +20,36 @@ struct WatchdogHandler<R> where R: Runner {
 
 
 impl<R> Handler for WatchdogHandler<R> where R: Runner {
-    fn handle(&self, mut req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+    fn handle(&self, req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
         let mut response = Response::default(); // default is 200 OK
 
-        match req.method() {
-            &Method::GET => {
-                match req.uri().path() {
-                    "/" => {
-                        if let Err(ref err) = self.runner.run(&mut req, &mut response) {
-                            error!("{}", err.to_string());
-                        }
-                    }
-                    "/_/health" => { // check healthy
-                        if check_healthy() {
-                            *response.body_mut() = Body::from("OK");
-                        } else {
-                            *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
-                        }
-                    }
-                    _ => { // 404 not found
-                        *response.status_mut() = StatusCode::NOT_FOUND;
-                    }
+        if req.method() == &Method::OPTIONS { // for options methods, just return accept
+            response.headers_mut().insert("Access-Control-Allow-Headers", "*".parse().unwrap());
+            response.headers_mut().insert("Access-Control-Allow-Origin", "*".parse().unwrap());
+            return Ok(response);
+        }
+
+        match req.uri().path() {
+            "/" => {
+                if let Err(ref err) = self.runner.run(req, &mut response) {
+                    *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                    *response.body_mut() = Body::from(err.to_string());
+                    error!("{}", err.to_string());
                 }
             }
-            &Method::OPTIONS => {// for options methods, just return accept
-                response.headers_mut().insert("Access-Control-Allow-Headers", "*".parse().unwrap());
-                response.headers_mut().insert("Access-Control-Allow-Origin", "*".parse().unwrap());
+            "/_/health" => { // check healthy
+                if req.method() == &Method::GET {
+                    if check_healthy() {
+                        *response.body_mut() = Body::from("OK");
+                    } else {
+                        *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
+                    }
+                } else {// other methods are not allowed
+                    *response.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
+                }
             }
-            _ => { // other methods are not allowed
-                *response.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
+            _ => { // 404 not found
+                *response.status_mut() = StatusCode::NOT_FOUND;
             }
         }
 

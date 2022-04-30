@@ -1,11 +1,14 @@
 use anyhow::Result;
 use hyper::{Body, Request, Response};
-use crate::runner::{StaticFileProcessor, Runner};
+use crate::runner::Runner;
 use crate::WatchdogConfig;
 
 
+pub(crate) struct StaticFileProcessor;
+
+
 impl Runner for StaticFileProcessor {
-    fn run(&self, _: &mut Request<Body>, _: &mut Response<Body>) -> Result<()> {
+    fn run(&self, _: Request<Body>, _: &mut Response<Body>) -> Result<()> {
         todo!()
     }
 }

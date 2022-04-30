@@ -53,6 +53,9 @@ pub(crate) struct WatchdogConfig {
     /// The size for scanning logs for stdout/stderr
     pub(crate) _log_buffer_size: i32,
 
+    /// The max running function number
+    pub(crate) _max_scale: Option<usize>,
+
     /// The root directory for wasm file system
     #[cfg(feature = "wasm")]
     pub(crate) _wasm_root: Option<String>,

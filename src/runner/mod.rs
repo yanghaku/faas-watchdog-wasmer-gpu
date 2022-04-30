@@ -24,30 +24,18 @@ use hyper::{Body, Request, Response};
 
 /// parse the request and run function and generate the response
 pub(crate) trait Runner {
-    fn run(&self, _: &mut Request<Body>, _: &mut Response<Body>) -> Result<()>;
+    fn run(&self, _request: Request<Body>, _: &mut Response<Body>) -> Result<()>;
+
+    fn scale(&self, _replicas: usize) -> Result<()> {
+        // default is do nothing
+        Ok(())
+    }
 }
 
 
+pub(crate) use forking_runner::*;
+pub(crate) use http_runner::*;
+pub(crate) use serializing_fork_runner::*;
+pub(crate) use static_file_processor::*;
 #[cfg(feature = "wasm")]
-pub(crate) struct WasmRunner {
-    /// compiled wasm module
-    _module: wasmer::Module,
-
-    /// the function process and arguments
-    _func_process: Vec<String>,
-
-    /// workplace root directory
-    _wasm_root: std::path::PathBuf,
-}
-
-
-pub(crate) struct ForkingRunner;
-
-
-pub(crate) struct HttpRunner;
-
-
-pub(crate) struct StaticFileProcessor;
-
-
-pub(crate) struct SerializingForkRunner;
+pub(crate) use wasm_runner::*;

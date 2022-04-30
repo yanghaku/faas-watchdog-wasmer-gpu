@@ -65,7 +65,7 @@ impl Display for WatchdogMode {
 
 #[cfg(test)]
 mod test {
-    use crate::config::watchdog_mode::{WATCHDOG_MODE_STR, WatchdogMode};
+    use super::{WATCHDOG_MODE_STR, WatchdogMode};
 
     #[test]
     fn test_mode() {
