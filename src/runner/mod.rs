@@ -1,6 +1,3 @@
-/// some help function
-mod utils;
-
 /// for wasm mode
 #[cfg(feature = "wasm")]
 pub(crate) mod wasm_runner;

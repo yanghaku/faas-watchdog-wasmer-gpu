@@ -5,9 +5,7 @@ use hyper::{Body, Method, Request, Response, StatusCode};
 use log::error;
 
 use super::Handler;
-use crate::config::WatchdogMode;
-use crate::WatchdogConfig;
-use crate::health::check_healthy;
+use crate::{WatchdogConfig, WatchdogMode, check_healthy};
 use crate::runner::{ForkingRunner, HttpRunner, Runner, SerializingForkRunner, StaticFileProcessor};
 
 #[cfg(feature = "wasm")]
@@ -30,13 +28,6 @@ impl<R> Handler for WatchdogHandler<R> where R: Runner {
         }
 
         match req.uri().path() {
-            "/" => {
-                if let Err(ref err) = self.runner.run(req, &mut response) {
-                    *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                    *response.body_mut() = Body::from(err.to_string());
-                    error!("{}", err.to_string());
-                }
-            }
             "/_/health" => { // check healthy
                 if req.method() == &Method::GET {
                     if check_healthy() {
@@ -48,8 +39,12 @@ impl<R> Handler for WatchdogHandler<R> where R: Runner {
                     *response.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
                 }
             }
-            _ => { // 404 not found
-                *response.status_mut() = StatusCode::NOT_FOUND;
+            _ => { // for every other path and method
+                if let Err(ref err) = self.runner.run(req, &mut response) {
+                    *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                    *response.body_mut() = Body::from(err.to_string());
+                    error!("{}", err.to_string());
+                }
             }
         }
 

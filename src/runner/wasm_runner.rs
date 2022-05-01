@@ -8,6 +8,7 @@ mod thread_pool;
 mod stdio;
 
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::channel;
@@ -16,24 +17,28 @@ use std::time::SystemTime;
 
 use anyhow::{anyhow, Result};
 use hyper::{Body, Request, Response};
+use hyper::header::HeaderValue;
 use log::{debug, info, warn};
 use wasmer_wasi::WasiState;
 
 use super::Runner;
-use super::utils::parse_command;
-use crate::WatchdogConfig;
+use crate::{WatchdogConfig, parse_command, inject_environment};
 pub(crate) use compiler::Compiler;
 use stdio::{Stdin, Stdout, Stderr};
 use thread_pool::ThreadPool;
 
 
-pub(crate) const DEFAULT_WASM_ROOT: &str = "/wasm_root";
+/// default use now file system as root
+pub(crate) const DEFAULT_WASM_ROOT: &str = "/";
 pub(crate) const KEY_WASM_ROOT: &str = "wasm_root";
 pub(crate) const KEY_WASM_C_TARGET_TRIPLE: &str = "wasm_c_target";
 pub(crate) const KEY_WASM_C_CPU_FEATURES: &str = "wasm_c_cpu_features";
 const DEFAULT_MAX_SCALE: usize = 1024;
-const BIN_DIR: &str = "bin";
-const RUN_DIR: &str = "run";
+
+/// default cuda is disable
+#[cfg(feature = "wasm-cuda")]
+pub(crate) const DEFAULT_WASM_USE_CUDA: bool = false;
+pub(crate) const KEY_WASM_USE_CUDA: &str = "use_cuda";
 
 
 /// The data for wasm runner
@@ -52,6 +57,16 @@ struct WasmRunnerEntry {
 
     /// log buffer size
     _log_buffer_size: usize,
+
+    /// response content type
+    _response_content_type: HeaderValue,
+
+    /// if inject the environment
+    _inject_cgi_headers: bool,
+
+    /// if use cuda
+    #[cfg(feature = "wasm-cuda")]
+    _use_cuda: bool,
 
     /// compiled wasm module
     _module: wasmer::Module,
@@ -87,6 +102,8 @@ impl Runner for WasmRunner {
         // try get response body
         *res.body_mut() = res_body?;
 
+        // set content type
+        res.headers_mut().insert("Content-Type", self._inner._response_content_type.clone());
         Ok(())
     }
 
@@ -111,7 +128,8 @@ impl WasmRunner {
 
         let wasm_root = PathBuf::from(match config._wasm_root {
             None => {
-                warn!("The environment variable `{}` is not specified, use the default path: `{}`", KEY_WASM_ROOT, DEFAULT_WASM_ROOT);
+                warn!("The environment variable `{}` is not specified, use the default \
+                            path: `{}`", KEY_WASM_ROOT, DEFAULT_WASM_ROOT);
                 DEFAULT_WASM_ROOT.to_string()
             }
             Some(r) => r
@@ -123,6 +141,28 @@ impl WasmRunner {
                 DEFAULT_MAX_SCALE
             }
         };
+
+        #[cfg(feature = "wasm-cuda")]
+            let use_cuda = match config._wasm_use_cuda {
+            Some(u) => u,
+            None => {
+                warn!("The environment variable `{}` is not specified, use the \
+                            default value `{}`", KEY_WASM_USE_CUDA, DEFAULT_WASM_USE_CUDA);
+                DEFAULT_WASM_USE_CUDA
+            }
+        };
+        #[cfg(feature = "wasm-cuda")]
+        info!("Running Webassembly with cuda support = `{}`", use_cuda);
+        #[cfg(not(feature = "wasm-cuda"))]
+        if let Some(use_cuda) = config._wasm_use_cuda {
+            if use_cuda {
+                log::error!("The environment variable `{}` is `true`, but this version cannot \
+                        support cuda! please enable `wasm-cuda` features", KEY_WASM_USE_CUDA);
+            } else {
+                warn!("The environment variable `{}` is set but not used", KEY_WASM_USE_CUDA)
+            }
+        }
+
         let log_buffer_size = if config._log_buffer_size <= 0 {
             0 as usize
         } else {
@@ -132,7 +172,7 @@ impl WasmRunner {
 
         let func_process = parse_command(&config._function_process)?;
 
-        let module_path = wasm_root.join(BIN_DIR).join(func_process[0].as_str());
+        let module_path = PathBuf::from(func_process[0].as_str());
         debug!("Webassembly module path is `{}`", module_path.display());
 
         let compiler = Compiler::new(config._wasm_c_target_triple, config._wasm_c_cpu_features)?;
@@ -153,6 +193,10 @@ impl WasmRunner {
                 _log_buffer_size: log_buffer_size,
                 _max_scale: max_scale,
                 _func_process: func_process,
+                _response_content_type: config._content_type.parse().unwrap(),
+                _inject_cgi_headers: config._inject_cgi_headers,
+                #[cfg(feature = "wasm-cuda")]
+                _use_cuda: use_cuda,
                 _module: module,
                 _wasm_root: wasm_root,
             })
@@ -162,10 +206,18 @@ impl WasmRunner {
 
     /// run the function in thread pool
     /// return the stdout as response body
+    #[allow(unused_mut)]
     pub(crate) fn run_inner(&self, req: Request<Body>) -> Result<Body> {
         let start_time = SystemTime::now();
         let thread_id = thread::current().id();
         let func_process = &self._inner._func_process;
+
+        // get the environment from heads (wasm mode does not inherit the environment)
+        let environment = if self._inner._inject_cgi_headers {
+            inject_environment(false, &req)
+        } else {
+            HashMap::new()
+        };
 
         // init the stdio for function
         let stdin = Box::new(Stdin::new(req.into_body())?);
@@ -180,14 +232,23 @@ impl WasmRunner {
         // build the wasi environment
         let mut wasi_env = WasiState::new(func_process[0].as_str())
             .args(&func_process[1..func_process.len()])
-            .map_dir("/", self._inner._wasm_root.join(RUN_DIR))?
+            .map_dir("/", self._inner._wasm_root.as_path())?
             .stdin(stdin)
             .stdout(stdout)
             .stderr(stderr)
+            .envs(environment)
             .env("PWD", "/")
             .finalize()?;
 
-        let import_object = wasi_env.import_object(&self._inner._module)?;
+        let mut import_object = wasi_env.import_object(&self._inner._module)?;
+
+        // init a cuda environment
+        #[cfg(feature = "wasm-cuda")]
+        if self._inner._use_cuda {
+            let cuda_env = wasmer_cuda::CudaEnv::default();
+            // get import set from wasi_env, and add the cuda import to it
+            cuda_env.add_to_import_object(&self._inner._module, &mut import_object);
+        }
 
         // instate the wasm
         let instance = wasmer::Instance::new(&self._inner._module, &import_object)?;

@@ -10,6 +10,7 @@ build = "src/build.rs"
 
 
 [dependencies]
+lazy_static = "1.4"
 anyhow = "1.0"
 log = "0.4"
 num_cpus = "1.13"

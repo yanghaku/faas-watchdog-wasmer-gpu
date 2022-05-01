@@ -28,23 +28,29 @@ mod metrics;
 /// http server for watchdog
 mod server;
 
+/// some help function
+mod utils;
+
+
+extern crate lazy_static;
 
 use std::collections::HashMap;
 use std::io::Write;
 use std::process::exit;
-use std::env::{vars_os, args};
+use std::env::args;
 use std::time::SystemTime;
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, SecondsFormat};
 use log::{debug, error, info};
 
-use crate::config::WatchdogConfig;
-use crate::health::{lock_file_present, mark_healthy, mark_unhealthy};
-use crate::server::start_server;
+use server::start_server;
+pub(crate) use config::{WatchdogConfig, WatchdogMode};
+pub(crate) use health::*;
+pub(crate) use utils::*;
 
 #[cfg(feature = "compiler")]
-use crate::runner::wasm_runner::{Compiler, KEY_WASM_C_TARGET_TRIPLE, KEY_WASM_C_CPU_FEATURES};
+use crate::runner::wasm_runner::{Compiler, KEY_WASM_C_CPU_FEATURES, KEY_WASM_C_TARGET_TRIPLE};
 
 
 /// main function for watchdog
@@ -55,21 +61,13 @@ fn main() {
     } else {
         "info"
     };
-    let env = env_logger::Env::default().default_filter_or(log_level);
-    env_logger::Builder::from_env(env).format(|buf, record| {
+    let logger_env = env_logger::Env::default().default_filter_or(log_level);
+    env_logger::Builder::from_env(logger_env).format(|buf, record| {
         let now = DateTime::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Millis, true);
         writeln!(buf, "[watchdog {} {}] {}", now, record.level(), record.args())
     }).init();
 
-    // skip the no-UTF8 env var
-    let vars = vars_os().filter_map(|(k_os, v_os)| {
-        match (k_os.into_string(), v_os.into_string()) {
-            (Ok(k), Ok(v)) => Some((k, v)),
-            _ => None
-        }
-    }).collect();
-
-    let exit_code = match run(args().collect(), vars) {
+    let exit_code = match run(&args().collect(), environment_vars()) {
         Ok(_) => 0,
         Err(e) => {
             error!("{}", e);
@@ -84,7 +82,7 @@ fn main() {
 
 
 /// process the argument with given environment variables
-fn run(args: Vec<String>, env: HashMap<String, String>) -> Result<()> {
+fn run(args: &Vec<String>, env: &HashMap<String, String>) -> Result<()> {
     let bin_path = args.get(0).ok_or(
         anyhow!("Cannot resolve the first argument"))?;
 

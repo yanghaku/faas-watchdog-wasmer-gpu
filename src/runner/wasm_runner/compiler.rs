@@ -94,6 +94,9 @@ impl Compiler {
             info!("Compiling the webassembly module");
 
             wasm_file.set_extension("wasm");
+            if !wasm_file.is_file() {
+                return Err(anyhow!("No such Webassembly module file: `{}`", wasm_file.display()));
+            }
             let wasm_bytes = fs::read(wasm_file)?;
             let (module, duration) = self.do_compile(&wasm_bytes)?;
             info!("Compile success, usage {} ms", duration.as_millis());
@@ -208,6 +211,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "compiler")]
     fn test_triples() {
         let triples = vec!["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "i386-pc-windows-msvc"];
         let extensions = vec!["dylib", "so", "dll"];

@@ -67,4 +67,8 @@ pub(crate) struct WatchdogConfig {
     /// WebAssembly compile target cpu features
     #[cfg(feature = "wasm")]
     pub(crate) _wasm_c_cpu_features: Option<String>,
+
+    /// WebAssembly run instance with cuda support
+    #[cfg(feature = "wasm")]
+    pub(crate) _wasm_use_cuda: Option<bool>,
 }
