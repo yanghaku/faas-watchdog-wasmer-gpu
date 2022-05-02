@@ -11,6 +11,7 @@ mod stdio;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::channel;
 use std::thread;
 use std::time::SystemTime;
@@ -18,11 +19,11 @@ use std::time::SystemTime;
 use anyhow::{anyhow, Result};
 use hyper::{Body, Request, Response};
 use hyper::header::HeaderValue;
-use log::{debug, info, warn};
+use log::{debug, info};
 use wasmer_wasi::WasiState;
 
+use crate::*;
 use super::Runner;
-use crate::{WatchdogConfig, parse_command, inject_environment};
 pub(crate) use compiler::Compiler;
 use stdio::{Stdin, Stdout, Stderr};
 use thread_pool::ThreadPool;
@@ -33,12 +34,13 @@ pub(crate) const DEFAULT_WASM_ROOT: &str = "/";
 pub(crate) const KEY_WASM_ROOT: &str = "wasm_root";
 pub(crate) const KEY_WASM_C_TARGET_TRIPLE: &str = "wasm_c_target";
 pub(crate) const KEY_WASM_C_CPU_FEATURES: &str = "wasm_c_cpu_features";
-const DEFAULT_MAX_SCALE: usize = 1024;
+const DEFAULT_MIN_SCALE: usize = 1;
+const DEFAULT_MAX_SCALE: usize = 4096;
 
 /// default cuda is disable
 #[cfg(feature = "wasm-cuda")]
-pub(crate) const DEFAULT_WASM_USE_CUDA: bool = false;
-pub(crate) const KEY_WASM_USE_CUDA: &str = "use_cuda";
+pub(crate) const DEFAULT_USE_CUDA: bool = false;
+pub(crate) const KEY_USE_CUDA: &str = "use_cuda";
 
 
 /// The data for wasm runner
@@ -49,8 +51,14 @@ struct WasmRunnerEntry {
     /// the function process and arguments
     _func_process: Vec<String>,
 
+    /// the min scale number
+    _min_scale: usize,
+
     /// the max scale number
     _max_scale: usize,
+
+    /// the count of invocation
+    _invoke_count: AtomicUsize,
 
     /// if log prefix has prefix
     _log_prefix: bool,
@@ -87,6 +95,9 @@ pub(crate) struct WasmRunner {
 
 impl Runner for WasmRunner {
     fn run(&self, req: Request<Body>, res: &mut Response<Body>) -> Result<()> {
+        // invoke count ++
+        self._inner._invoke_count.fetch_add(1, Ordering::Relaxed);
+
         let (sender, receiver) = channel();
 
         let runner = self.clone();
@@ -107,9 +118,21 @@ impl Runner for WasmRunner {
         Ok(())
     }
 
-    fn scale(&self, replicas: usize) -> Result<()> {
-        if replicas == 0 {
-            Err(anyhow!("Replicas can not be zero!"))
+    /// get the scale number tuple: (now replicas, available replicas, invoke count)
+    fn get_scale(&self) -> (usize, usize, usize) {
+        let replicas = self._inner._worker.thread_num();
+        let available_replicas = self._inner._max_scale - replicas;
+        let invocation_count = self._inner._invoke_count.load(Ordering::Relaxed);
+
+        info!("Read scale: Replicas=`{}`, Available Replicas=`{}`, Invocation Count=`{}`",
+                        replicas,available_replicas,invocation_count);
+
+        (replicas, available_replicas, invocation_count)
+    }
+
+    fn set_scale(&self, replicas: usize) -> Result<()> {
+        if replicas < self._inner._min_scale {
+            Err(anyhow!("Replicas can not less then `{}`!", self._inner._min_scale))
         } else if replicas > self._inner._max_scale {
             Err(anyhow!("Replicas can not greater than `{}`!", self._inner._max_scale))
         } else {
@@ -124,42 +147,22 @@ impl Runner for WasmRunner {
 impl WasmRunner {
     /// create a new wasm runner
     pub(crate) fn new(config: WatchdogConfig) -> Result<Self> {
-        let start_time = SystemTime::now();
-
-        let wasm_root = PathBuf::from(match config._wasm_root {
-            None => {
-                warn!("The environment variable `{}` is not specified, use the default \
-                            path: `{}`", KEY_WASM_ROOT, DEFAULT_WASM_ROOT);
-                DEFAULT_WASM_ROOT.to_string()
-            }
-            Some(r) => r
-        });
-        let max_scale = match config._max_scale {
-            Some(m) => m,
-            None => {
-                warn!("The environment variable `max_scale` is not specified, use the default value: `{}`", DEFAULT_MAX_SCALE);
-                DEFAULT_MAX_SCALE
-            }
-        };
+        let wasm_root = PathBuf::from(
+            env_get_or_warn!(config._wasm_root, KEY_WASM_ROOT, DEFAULT_WASM_ROOT.to_string()));
+        let min_scale = env_get_or_warn!(config._min_scale, KEY_MIN_SCALE, DEFAULT_MIN_SCALE);
+        let max_scale = env_get_or_warn!(config._max_scale, KEY_MAX_SCALE, DEFAULT_MAX_SCALE);
 
         #[cfg(feature = "wasm-cuda")]
-            let use_cuda = match config._wasm_use_cuda {
-            Some(u) => u,
-            None => {
-                warn!("The environment variable `{}` is not specified, use the \
-                            default value `{}`", KEY_WASM_USE_CUDA, DEFAULT_WASM_USE_CUDA);
-                DEFAULT_WASM_USE_CUDA
-            }
-        };
+            let use_cuda = env_get_or_warn!(config._use_cuda, KEY_USE_CUDA, DEFAULT_USE_CUDA);
         #[cfg(feature = "wasm-cuda")]
         info!("Running Webassembly with cuda support = `{}`", use_cuda);
         #[cfg(not(feature = "wasm-cuda"))]
-        if let Some(use_cuda) = config._wasm_use_cuda {
+        if let Some(use_cuda) = config._use_cuda {
             if use_cuda {
                 log::error!("The environment variable `{}` is `true`, but this version cannot \
-                        support cuda! please enable `wasm-cuda` features", KEY_WASM_USE_CUDA);
+                        support cuda! please enable `wasm-cuda` features", KEY_USE_CUDA);
             } else {
-                warn!("The environment variable `{}` is set but not used", KEY_WASM_USE_CUDA)
+                warn!("The environment variable `{}` is set but not used", KEY_USE_CUDA)
             }
         }
 
@@ -175,13 +178,11 @@ impl WasmRunner {
         let module_path = PathBuf::from(func_process[0].as_str());
         debug!("Webassembly module path is `{}`", module_path.display());
 
+        let start_time = SystemTime::now();
         let compiler = Compiler::new(config._wasm_c_target_triple, config._wasm_c_cpu_features)?;
         let module = compiler.try_load_compiled(module_path)?;
 
-        // default use cpu's numbers as thread pool's thread number
-        let thread_num = num_cpus::get();
-
-        let thread_pool = ThreadPool::new(thread_num, Some(func_process[0].clone()), None);
+        let thread_pool = ThreadPool::new(min_scale, Some(func_process[0].clone()), None);
 
         let duration = SystemTime::now().duration_since(start_time).unwrap();
         info!("Deploy function {} took {} us  ({} ms)",func_process[0], duration.as_micros(), duration.as_millis());
@@ -191,7 +192,9 @@ impl WasmRunner {
                 _worker: thread_pool,
                 _log_prefix: config._prefix_logs,
                 _log_buffer_size: log_buffer_size,
+                _min_scale: min_scale,
                 _max_scale: max_scale,
+                _invoke_count: AtomicUsize::new(0),
                 _func_process: func_process,
                 _response_content_type: config._content_type.parse().unwrap(),
                 _inject_cgi_headers: config._inject_cgi_headers,

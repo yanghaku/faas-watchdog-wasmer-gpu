@@ -21,9 +21,17 @@ use hyper::{Body, Request, Response};
 
 /// parse the request and run function and generate the response
 pub(crate) trait Runner {
+    /// run function request
     fn run(&self, _request: Request<Body>, _: &mut Response<Body>) -> Result<()>;
 
-    fn scale(&self, _replicas: usize) -> Result<()> {
+    /// get the scale number tuple: (now replicas, available replicas, invoke count)
+    fn get_scale(&self) -> (usize, usize, usize) {
+        // default is return zero
+        (0, 0, 0)
+    }
+
+    /// update replicas
+    fn set_scale(&self, _replicas: usize) -> Result<()> {
         // default is do nothing
         Ok(())
     }

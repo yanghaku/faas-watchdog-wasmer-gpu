@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Duration;
 use anyhow::{anyhow, Result};
-use log::warn;
 
 use super::{WatchdogConfig, WatchdogMode};
 use super::watchdog_mode::WATCHDOG_MODE_STR;
@@ -54,7 +53,8 @@ const DEFAULT_PREFIX_LOGS: bool = true;
 const KEY_LOG_BUFFER_SIZE: &str = "log_buffer_size";
 const DEFAULT_LOG_BUFFER_SIZE: i32 = 65536;
 
-const KEY_MAX_SCALE: &str = "";
+pub(crate) const KEY_MIN_SCALE: &str = "min_scale";
+pub(crate) const KEY_MAX_SCALE: &str = "max_scale";
 
 const INJECT_CGI_HEADERS: bool = true;
 const METRICS_PORT: u16 = 8081;
@@ -94,10 +94,7 @@ impl WatchdogConfig {
                 }
                 mode
             }
-            _ => {
-                warn!("The environment variable `{}` is not specified, use the default mode: {}", KEY_MODE, DEFAULT_MODE.to_string());
-                DEFAULT_MODE
-            }
+            _ => env_get_or_warn!(None, KEY_MODE, DEFAULT_MODE)
         };
 
         let function_process = match vars.get(KEY_FUNC_NAME_1) {
@@ -167,6 +164,7 @@ impl WatchdogConfig {
             _max_inflight: max_inflight,
             _prefix_logs: prefix_logs,
             _log_buffer_size: log_buffer_size,
+            _min_scale: parse_var(vars, KEY_MIN_SCALE),
             _max_scale: parse_var(vars, KEY_MAX_SCALE),
 
             #[cfg(feature = "wasm")]
@@ -176,7 +174,7 @@ impl WatchdogConfig {
             #[cfg(feature = "wasm")]
             _wasm_c_cpu_features: parse_var(vars, KEY_WASM_C_CPU_FEATURES),
             #[cfg(feature = "wasm")]
-            _wasm_use_cuda: parse_var(vars, KEY_WASM_USE_CUDA),
+            _use_cuda: parse_var(vars, KEY_USE_CUDA),
         })
     }
 }
@@ -231,8 +229,16 @@ mod test {
             assert_eq!(cfg._max_inflight, DEFAULT_MAX_INFLIGHT);
             assert_eq!(cfg._prefix_logs, DEFAULT_PREFIX_LOGS);
             assert_eq!(cfg._log_buffer_size, DEFAULT_LOG_BUFFER_SIZE);
+            assert_eq!(cfg._min_scale, None);
+            assert_eq!(cfg._max_scale, None);
             #[cfg(feature = "wasm")]
             assert_eq!(cfg._wasm_root, None);
+            #[cfg(feature = "wasm")]
+            assert_eq!(cfg._use_cuda, None);
+            #[cfg(feature = "wasm")]
+            assert_eq!(cfg._wasm_c_target_triple, None);
+            #[cfg(feature = "wasm")]
+            assert_eq!(cfg._wasm_c_cpu_features, None);
         }
     }
 

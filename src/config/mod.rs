@@ -3,6 +3,7 @@ mod watchdog_config;
 
 
 use std::time::Duration;
+pub(crate) use watchdog_config::*;
 
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -53,6 +54,9 @@ pub(crate) struct WatchdogConfig {
     /// The size for scanning logs for stdout/stderr
     pub(crate) _log_buffer_size: i32,
 
+    /// The min running function number
+    pub(crate) _min_scale: Option<usize>,
+
     /// The max running function number
     pub(crate) _max_scale: Option<usize>,
 
@@ -70,5 +74,5 @@ pub(crate) struct WatchdogConfig {
 
     /// WebAssembly run instance with cuda support
     #[cfg(feature = "wasm")]
-    pub(crate) _wasm_use_cuda: Option<bool>,
+    pub(crate) _use_cuda: Option<bool>,
 }

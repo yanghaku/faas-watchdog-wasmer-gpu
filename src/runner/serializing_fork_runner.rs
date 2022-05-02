@@ -4,6 +4,7 @@ use crate::runner::Runner;
 use crate::WatchdogConfig;
 
 
+#[derive(Clone)]
 pub(crate) struct SerializingForkRunner;
 
 

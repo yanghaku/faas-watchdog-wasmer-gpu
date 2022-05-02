@@ -17,15 +17,15 @@ lazy_static! {
 
 
 #[inline(always)]
-#[allow(dead_code)]
 pub(crate) fn parse_command(func: &String) -> Result<Vec<String>> {
-    let v = func.split(" ")
-        .map(|s| { s.to_string() })
+    let v = func
+        .split(" ")
+        .map(|s| s.to_string())
         .collect::<Vec<String>>();
 
     match v.is_empty() {
         false => Ok(v),
-        true => Err(anyhow!("function name cannot be empty!"))
+        true => Err(anyhow!("function name cannot be empty!")),
     }
 }
 
@@ -37,9 +37,12 @@ pub(crate) fn environment_vars() -> &'static HashMap<String, String> {
 
 
 #[inline(always)]
-#[allow(dead_code)]
 pub(crate) fn inject_environment(inherit: bool, req: &Request<Body>) -> HashMap<String, String> {
-    let mut res = if inherit { ENVIRONMENT_VARS.clone() } else { HashMap::new() };
+    let mut res = if inherit {
+        ENVIRONMENT_VARS.clone()
+    } else {
+        HashMap::new()
+    };
 
     for (k, v) in req.headers().iter() {
         if let Ok(val) = v.to_str() {
@@ -56,4 +59,23 @@ pub(crate) fn inject_environment(inherit: bool, req: &Request<Body>) -> HashMap<
     // todo: Http_Transfer_Encoding
 
     res
+}
+
+
+macro_rules! env_get_or_warn {
+    ($cfg:expr,$key:expr,$default:expr) => {
+        match $cfg {
+            None => {
+                log::warn!(
+                    "The environment variable `{}` is not specified, use the default value: `{}`",
+                    $key, $default
+                );
+                $default
+            }
+            Some(v) => {
+                log::info!("Set {} = `{}`", $key, v);
+                v
+            }
+        }
+    };
 }

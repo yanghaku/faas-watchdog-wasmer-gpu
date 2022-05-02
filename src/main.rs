@@ -13,6 +13,10 @@
 // limitations under the License.
 
 
+/// some help functions and macros
+#[macro_use]
+mod utils;
+
 /// read the watch config from environment
 mod config;
 
@@ -25,14 +29,14 @@ mod runner;
 /// metrics
 mod metrics;
 
+mod contrib;
+
 /// http server for watchdog
 mod server;
 
-/// some help function
-mod utils;
-
 
 extern crate lazy_static;
+extern crate core;
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -45,9 +49,10 @@ use chrono::{DateTime, SecondsFormat};
 use log::{debug, error, info};
 
 use server::start_server;
-pub(crate) use config::{WatchdogConfig, WatchdogMode};
-pub(crate) use health::*;
 pub(crate) use utils::*;
+pub(crate) use config::*;
+pub(crate) use health::*;
+pub(crate) use contrib::*;
 
 #[cfg(feature = "compiler")]
 use crate::runner::wasm_runner::{Compiler, KEY_WASM_C_CPU_FEATURES, KEY_WASM_C_TARGET_TRIPLE};

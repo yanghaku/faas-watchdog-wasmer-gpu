@@ -113,7 +113,7 @@ impl ThreadPool {
 
     #[inline(always)]
     pub(crate) fn thread_num(&self) -> usize {
-        self._inner._thread_num.load(Ordering::Acquire)
+        self._inner._thread_num.load(Ordering::Relaxed)
     }
 
 
