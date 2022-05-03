@@ -1,8 +1,9 @@
-#[cfg(feature = "compiler")]
-use std::fs;
-
 use std::path::PathBuf;
 
+#[cfg(feature = "compiler")]
+use std::fs;
+#[cfg(feature = "compiler")]
+use std::str::FromStr;
 #[cfg(feature = "compiler")]
 use std::time::{Duration, SystemTime};
 
@@ -214,8 +215,14 @@ impl Compiler {
 
         let cpu_features = match cpu_features_str {
             None => CpuFeature::for_host(),
-            Some(_) => {
-                todo!()
+            Some(ref s) => {
+                let mut set = CpuFeature::set();
+                for c in s.split([',', ' ', '\n', '\t']) {
+                    set |= CpuFeature::from_str(c).map_err(|e| {
+                        anyhow!("Cannot parse the cpu features `{}`, error = {:?}", c, e)
+                    })?;
+                }
+                set
             }
         };
 
@@ -250,5 +257,12 @@ mod test {
             assert!(compiler.is_ok());
             assert_eq!(compiler.unwrap()._out_extension, extensions[i]);
         }
+    }
+
+    #[test]
+    #[cfg(feature = "compiler")]
+    fn test_cpu_features() {
+        let features = "ssse3,avx,avx2".to_string();
+        assert!(Compiler::parse_target(None, Some(features)).is_ok());
     }
 }
