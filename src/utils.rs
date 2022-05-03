@@ -15,7 +15,6 @@ lazy_static! {
     }).collect();
 }
 
-
 #[inline(always)]
 pub(crate) fn parse_command(func: &String) -> Result<Vec<String>> {
     let v = func
@@ -29,12 +28,10 @@ pub(crate) fn parse_command(func: &String) -> Result<Vec<String>> {
     }
 }
 
-
 #[inline(always)]
 pub(crate) fn environment_vars() -> &'static HashMap<String, String> {
     &ENVIRONMENT_VARS
 }
-
 
 #[inline(always)]
 pub(crate) fn inject_environment(inherit: bool, req: &Request<Body>) -> HashMap<String, String> {
@@ -61,14 +58,14 @@ pub(crate) fn inject_environment(inherit: bool, req: &Request<Body>) -> HashMap<
     res
 }
 
-
 macro_rules! env_get_or_warn {
     ($cfg:expr,$key:expr,$default:expr) => {
         match $cfg {
             None => {
                 log::warn!(
                     "The environment variable `{}` is not specified, use the default value: `{}`",
-                    $key, $default
+                    $key,
+                    $default
                 );
                 $default
             }

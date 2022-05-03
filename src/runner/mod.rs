@@ -14,10 +14,8 @@ mod static_file_processor;
 /// for serial mode
 mod serializing_fork_runner;
 
-
 use anyhow::Result;
 use hyper::{Body, Request, Response};
-
 
 /// parse the request and run function and generate the response
 pub(crate) trait Runner {
@@ -36,7 +34,6 @@ pub(crate) trait Runner {
         Ok(())
     }
 }
-
 
 pub(crate) use forking_runner::*;
 pub(crate) use http_runner::*;

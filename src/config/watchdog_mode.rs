@@ -1,7 +1,6 @@
+use super::WatchdogMode;
 use core::fmt::Display;
 use std::fmt::Formatter;
-use super::WatchdogMode;
-
 
 impl From<usize> for WatchdogMode {
     fn from(num: usize) -> Self {
@@ -18,10 +17,15 @@ impl From<usize> for WatchdogMode {
     }
 }
 
-
-pub(crate) const WATCHDOG_MODE_STR: [&str; 7] = ["unknown", "streaming", "afterburn",
-    "serializing", "http", "static", "wasm"];
-
+pub(crate) const WATCHDOG_MODE_STR: [&str; 7] = [
+    "unknown",
+    "streaming",
+    "afterburn",
+    "serializing",
+    "http",
+    "static",
+    "wasm",
+];
 
 impl From<&str> for WatchdogMode {
     fn from(str: &str) -> Self {
@@ -34,13 +38,11 @@ impl From<&str> for WatchdogMode {
     }
 }
 
-
 impl From<String> for WatchdogMode {
     fn from(s: String) -> Self {
         WatchdogMode::from(s.as_str())
     }
 }
-
 
 impl From<&String> for WatchdogMode {
     fn from(s: &String) -> Self {
@@ -48,13 +50,11 @@ impl From<&String> for WatchdogMode {
     }
 }
 
-
 impl From<WatchdogMode> for String {
     fn from(mode: WatchdogMode) -> Self {
         WATCHDOG_MODE_STR[mode as usize].to_string()
     }
 }
-
 
 impl Display for WatchdogMode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -62,10 +62,9 @@ impl Display for WatchdogMode {
     }
 }
 
-
 #[cfg(test)]
 mod test {
-    use super::{WATCHDOG_MODE_STR, WatchdogMode};
+    use super::{WatchdogMode, WATCHDOG_MODE_STR};
 
     #[test]
     fn test_mode() {

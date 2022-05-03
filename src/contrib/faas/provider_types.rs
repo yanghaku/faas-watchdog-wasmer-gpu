@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 
-
 #[derive(Debug, Clone)]
 pub(crate) struct ReplicaFuncStatus {
     pub(crate) _name: Option<String>,
@@ -13,7 +12,6 @@ pub(crate) struct ReplicaFuncStatus {
     pub(crate) _replicas: u64,
     pub(crate) _available_replicas: u64,
 }
-
 
 macro_rules! push_key {
     ($self:ident, $target:ident,$is_first:ident, $key:expr) => {
@@ -30,7 +28,6 @@ macro_rules! push_key {
     };
 }
 
-
 macro_rules! push_string {
     ($self:ident, $target:ident,$is_first:ident, $key:expr,$value:expr) => {
         push_key!($self, $target, $is_first, $key);
@@ -41,7 +38,6 @@ macro_rules! push_string {
     };
 }
 
-
 macro_rules! push_option_string {
     ($self:ident, $target:ident,$is_first:ident, $key:expr,$value:expr) => {
         if let Some(ref p) = $value {
@@ -49,7 +45,6 @@ macro_rules! push_option_string {
         }
     };
 }
-
 
 impl ReplicaFuncStatus {
     const NAME_KEY: &'static str = "name";
@@ -102,8 +97,13 @@ impl ReplicaFuncStatus {
         push_option_string!(Self, json, is_first, Self::NAME_KEY, self._name);
         push_option_string!(Self, json, is_first, Self::IMAGE_KEY, self._image);
         push_option_string!(Self, json, is_first, Self::NAMESPACE_KEY, self._namespace);
-        push_option_string!(Self, json, is_first,
-                            Self::ENV_PROCESS_KEY, self._env_process);
+        push_option_string!(
+            Self,
+            json,
+            is_first,
+            Self::ENV_PROCESS_KEY,
+            self._env_process
+        );
 
         if let Some(vars) = self._env_vars {
             push_key!(Self, json, is_first, Self::ENV_VARS_KEY);
@@ -127,12 +127,10 @@ impl ReplicaFuncStatus {
     }
 }
 
-
 pub(crate) struct ScaleServiceRequest {
     pub(crate) _service_name: Option<String>,
     pub(crate) _replicas: u64,
 }
-
 
 impl ScaleServiceRequest {
     #[allow(dead_code)]
@@ -144,7 +142,8 @@ impl ScaleServiceRequest {
         let s = res_s?;
         // todo: verify json string format
 
-        let mut pos = s.find(Self::REPLICAS_KEY)
+        let mut pos = s
+            .find(Self::REPLICAS_KEY)
             .ok_or(anyhow!("Cannot find key {}", Self::REPLICAS_KEY))?;
 
         pos += Self::REPLICAS_KEY.as_bytes().len();
@@ -191,13 +190,12 @@ impl ScaleServiceRequest {
     }
 }
 
-
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-    use anyhow::anyhow;
-    use super::ScaleServiceRequest;
     use super::ReplicaFuncStatus;
+    use super::ScaleServiceRequest;
+    use anyhow::anyhow;
+    use std::collections::HashMap;
 
     #[test]
     fn test_to_json() {
@@ -244,16 +242,24 @@ mod test {
         );
     }
 
-
     #[test]
     fn test_scale_service_request() {
         assert!(ScaleServiceRequest::from_json(Err(anyhow!(""))).is_err());
         assert!(ScaleServiceRequest::from_json(Ok("{{}}".to_string())).is_err());
 
         let str1 = format!("{{{}:123}}", ScaleServiceRequest::REPLICAS_KEY);
-        assert_eq!(ScaleServiceRequest::from_json(Ok(str1)).unwrap()._replicas, 123);
+        assert_eq!(
+            ScaleServiceRequest::from_json(Ok(str1)).unwrap()._replicas,
+            123
+        );
 
-        let str2 = format!("{{{} \n\t  :  \t 12366666}}", ScaleServiceRequest::REPLICAS_KEY);
-        assert_eq!(ScaleServiceRequest::from_json(Ok(str2)).unwrap()._replicas, 12366666);
+        let str2 = format!(
+            "{{{} \n\t  :  \t 12366666}}",
+            ScaleServiceRequest::REPLICAS_KEY
+        );
+        assert_eq!(
+            ScaleServiceRequest::from_json(Ok(str2)).unwrap()._replicas,
+            12366666
+        );
     }
 }

@@ -16,13 +16,11 @@ macro_rules! build_and_serve {
     };
 }
 
-
 /// watchdog server
 mod watchdog;
 
 /// metrics server
 mod metrics;
-
 
 use std::net::{IpAddr, SocketAddr};
 use std::thread;
@@ -32,7 +30,6 @@ use log::{error, info};
 use tokio::signal::ctrl_c;
 
 use crate::WatchdogConfig;
-
 
 const DEFAULT_IP_STR: &str = "127.0.0.1";
 
@@ -50,8 +47,7 @@ pub(crate) fn start_server(config: WatchdogConfig) -> Result<()> {
     let metrics_config = config.clone();
     thread::Builder::new().spawn(move || {
         // metrics only use 1 threads
-        if let Err(e) = metrics::build_and_serve("metrics",
-                                                 metrics_addr, 1, metrics_config) {
+        if let Err(e) = metrics::build_and_serve("metrics", metrics_addr, 1, metrics_config) {
             error!("Metrics server error! {}", e);
             // stop process
             std::process::exit(1);

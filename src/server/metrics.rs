@@ -4,19 +4,18 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use anyhow::Result;
-use hyper::{Body, Request, Response, StatusCode};
 use hyper::service::Service;
+use hyper::{Body, Request, Response, StatusCode};
 
-use crate::WatchdogConfig;
 use super::shutdown_signal;
-
+use crate::WatchdogConfig;
 
 pub(super) struct MetricsMakeSvc;
 
 impl<T> Service<T> for MetricsMakeSvc {
     type Response = MetricsService;
     type Error = hyper::Error;
-    type Future = Pin<Box<dyn Future<Output=Result<Self::Response, Self::Error>> + Send>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(&mut self, _: &mut Context) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -28,14 +27,12 @@ impl<T> Service<T> for MetricsMakeSvc {
     }
 }
 
-
 pub(super) struct MetricsService;
-
 
 impl Service<Request<Body>> for MetricsService {
     type Response = Response<Body>;
     type Error = hyper::Error;
-    type Future = Pin<Box<dyn Future<Output=Result<Self::Response, Self::Error>> + Send>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(&mut self, _: &mut Context) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -45,7 +42,6 @@ impl Service<Request<Body>> for MetricsService {
         Box::pin(handle(req))
     }
 }
-
 
 async fn handle(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
     let mut response = Response::default(); // default is 200 OK
@@ -61,10 +57,13 @@ async fn handle(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
     Ok(response)
 }
 
-
 /// build watchdog server and serve
-pub(super) fn build_and_serve(name: &'static str, addr: SocketAddr,
-                              num_threads: usize, _config: WatchdogConfig) -> Result<()> {
-    build_and_serve!(name,addr,num_threads,MetricsMakeSvc{});
+pub(super) fn build_and_serve(
+    name: &'static str,
+    addr: SocketAddr,
+    num_threads: usize,
+    _config: WatchdogConfig,
+) -> Result<()> {
+    build_and_serve!(name, addr, num_threads, MetricsMakeSvc {});
     Ok(())
 }

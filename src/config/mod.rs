@@ -1,10 +1,8 @@
-mod watchdog_mode;
 mod watchdog_config;
-
+mod watchdog_mode;
 
 use std::time::Duration;
 pub(crate) use watchdog_config::*;
-
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum WatchdogMode {
@@ -16,7 +14,6 @@ pub(crate) enum WatchdogMode {
     ModeStatic = 5,
     ModeWasm = 6,
 }
-
 
 /// configuration for a watchdog
 #[derive(Debug, Clone)]

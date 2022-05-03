@@ -5,7 +5,6 @@ use hyper::Body;
 use tokio::runtime::{Builder, Runtime};
 use wasmer_wasi::{WasiFile, WasiFsError};
 
-
 /// for impl the interface WasiFile
 macro_rules! impl_wasi_file {
     ($name:ident) => {
@@ -41,7 +40,6 @@ macro_rules! impl_wasi_file {
     };
 }
 
-
 /// for impl the interface Seek which can not seek
 macro_rules! impl_not_seek {
     ($name: ident) => {
@@ -55,7 +53,6 @@ macro_rules! impl_not_seek {
         }
     };
 }
-
 
 /// for impl the interface Seek which can not read
 macro_rules! impl_unreadable {
@@ -92,7 +89,6 @@ macro_rules! impl_unreadable {
     };
 }
 
-
 /// for impl the interface Write which can not write
 macro_rules! impl_unwritable {
     ($name:ident) => {
@@ -128,7 +124,6 @@ macro_rules! impl_unwritable {
     };
 }
 
-
 /// redirect the request body to stdin
 #[derive(Debug)]
 pub(super) struct Stdin {
@@ -139,7 +134,6 @@ pub(super) struct Stdin {
     /// async data handle
     _async_handle: Runtime,
 }
-
 
 impl Stdin {
     pub(super) fn new(body: Body) -> Result<Self> {
@@ -168,7 +162,6 @@ impl Stdin {
         self._http_body.size_hint().lower() as usize
     }
 }
-
 
 impl Read for Stdin {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
@@ -238,19 +231,16 @@ impl Read for Stdin {
     }
 }
 
-
 // the Stdin only can read
 impl_wasi_file!(Stdin);
 impl_not_seek!(Stdin);
 impl_unwritable!(Stdin);
-
 
 /// stdout for wasm function, just buffer it into vector
 #[derive(Debug, Clone)]
 pub(super) struct Stdout {
     _buffer: Vec<u8>,
 }
-
 
 impl Stdout {
     pub(super) fn new() -> Self {
@@ -264,13 +254,11 @@ impl Stdout {
         std::mem::take(&mut self._buffer)
     }
 
-
     #[inline(always)]
     fn bytes_available(&self) -> usize {
         0
     }
 }
-
 
 impl Write for Stdout {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
@@ -288,13 +276,10 @@ impl Write for Stdout {
     }
 }
 
-
 // the Stdout only can write
 impl_wasi_file!(Stdout);
 impl_not_seek!(Stdout);
 impl_unreadable!(Stdout);
-
-
 
 /// redirect stderr to watchdog log
 #[derive(Debug)]
@@ -305,9 +290,8 @@ pub(super) struct Stderr {
     _buf_max_size: usize,
 }
 
-
 impl Stderr {
-    pub(in super) fn new(logger_name: String, log_prefix: bool, log_buf_size: usize) -> Self {
+    pub(super) fn new(logger_name: String, log_prefix: bool, log_buf_size: usize) -> Self {
         Self {
             _logger_name: logger_name,
             _buffer: Vec::new(),
@@ -348,7 +332,6 @@ impl Stderr {
     }
 }
 
-
 /// bind to the log
 impl Write for Stderr {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
@@ -372,7 +355,6 @@ impl Write for Stderr {
     }
 }
 
-
 impl Drop for Stderr {
     /// flush the buffer to logger
     #[allow(unused_must_use)]
@@ -380,7 +362,6 @@ impl Drop for Stderr {
         self.flush_inner();
     }
 }
-
 
 // the Stderr only can write
 impl_wasi_file!(Stderr);

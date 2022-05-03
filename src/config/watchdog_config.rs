@@ -1,14 +1,13 @@
+use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Duration;
-use anyhow::{anyhow, Result};
 
-use super::{WatchdogConfig, WatchdogMode};
 use super::watchdog_mode::WATCHDOG_MODE_STR;
+use super::{WatchdogConfig, WatchdogMode};
 
 #[cfg(feature = "wasm")]
 use crate::runner::wasm_runner::*;
-
 
 const KET_PORT: &str = "port";
 const DEFAULT_PORT: u16 = 8080;
@@ -59,27 +58,29 @@ pub(crate) const KEY_MAX_SCALE: &str = "max_scale";
 const INJECT_CGI_HEADERS: bool = true;
 const METRICS_PORT: u16 = 8081;
 
-
 impl WatchdogConfig {
     // generate the instance of WatchdogConfig from the given environment variable
     pub(crate) fn new(vars: &HashMap<String, String>) -> Result<Self> {
         let tcp_port = parse_var(vars, &KET_PORT).unwrap_or(DEFAULT_PORT);
 
         let http_read_timeout = Duration::from_secs(
-            parse_var(vars, KEY_READ_TIMEOUT).unwrap_or(DEFAULT_READ_TIMEOUT_SEC));
+            parse_var(vars, KEY_READ_TIMEOUT).unwrap_or(DEFAULT_READ_TIMEOUT_SEC),
+        );
         let http_write_timeout = Duration::from_secs(
-            parse_var(vars, KEY_WRITE_TIMEOUT).unwrap_or(DEFAULT_WRITE_TIMEOUT_SEC));
+            parse_var(vars, KEY_WRITE_TIMEOUT).unwrap_or(DEFAULT_WRITE_TIMEOUT_SEC),
+        );
         if http_write_timeout.is_zero() {
             return Err(anyhow!("HTTP write timeout must be over 0s."));
         }
 
         let health_check_interval = match parse_var(vars, KEY_HEALTH_CHECK_INTERVAL) {
             Some(t) => Duration::from_secs(t),
-            None => http_write_timeout
+            None => http_write_timeout,
         };
 
         let exec_timeout = Duration::from_secs(
-            parse_var(vars, KEY_EXEC_TIMEOUT).unwrap_or(DEFAULT_EXEC_TIMEOUT_SEC));
+            parse_var(vars, KEY_EXEC_TIMEOUT).unwrap_or(DEFAULT_EXEC_TIMEOUT_SEC),
+        );
 
         let operational_mode = match vars.get(KEY_MODE) {
             Some(str) => {
@@ -90,11 +91,15 @@ impl WatchdogConfig {
                         available_mode += WATCHDOG_MODE_STR[i];
                         available_mode += ",";
                     }
-                    return Err(anyhow!("unknown watchdog mode: {} \navailable mode is [{}]", str, available_mode));
+                    return Err(anyhow!(
+                        "unknown watchdog mode: {} \navailable mode is [{}]",
+                        str,
+                        available_mode
+                    ));
                 }
                 mode
             }
-            _ => env_get_or_warn!(None, KEY_MODE, DEFAULT_MODE)
+            _ => env_get_or_warn!(None, KEY_MODE, DEFAULT_MODE),
         };
 
         let function_process = match vars.get(KEY_FUNC_NAME_1) {
@@ -109,41 +114,45 @@ impl WatchdogConfig {
                         } else {
                             return Err(anyhow!(
                                 "Please provide a \"function_process\" or \"fprocess\" \
-                                    environmental variable for your function."));
+                                    environmental variable for your function."
+                            ));
                         }
                     }
                 }
             }
         };
 
-        let content_type = parse_var(vars, KEY_CONTENT_TYPE)
-            .unwrap_or(DEFAULT_CONTENT_TYPE.to_string());
+        let content_type =
+            parse_var(vars, KEY_CONTENT_TYPE).unwrap_or(DEFAULT_CONTENT_TYPE.to_string());
 
         let upstream_url = match parse_var(vars, KEY_UPSTREAM_URL_1) {
             Some(u) => Some(u),
-            None => parse_var(vars, KEY_UPSTREAM_URL_2)
+            None => parse_var(vars, KEY_UPSTREAM_URL_2),
         };
 
-        let static_path = parse_var(vars, KEY_STATIC_PATH).unwrap_or(
-            DEFAULT_STATIC_PATH.to_string());
-
+        let static_path =
+            parse_var(vars, KEY_STATIC_PATH).unwrap_or(DEFAULT_STATIC_PATH.to_string());
 
         let suppress_lock = parse_var(vars, KEY_SUPPRESS_LOCK).unwrap_or(DEFAULT_SUPPRESS_LOCK);
         let max_inflight = parse_var(vars, KEY_MAX_INFLIGHT).unwrap_or(DEFAULT_MAX_INFLIGHT);
 
-        let buffer_http_body = parse_var(vars, KEY_BUFFER_HTTP_1).unwrap_or(
-            parse_var(vars, KEY_BUFFER_HTTP_2).unwrap_or(DEFAULT_BUFFER_HTTP)
-        );
+        let buffer_http_body = parse_var(vars, KEY_BUFFER_HTTP_1)
+            .unwrap_or(parse_var(vars, KEY_BUFFER_HTTP_2).unwrap_or(DEFAULT_BUFFER_HTTP));
 
         let prefix_logs = parse_var(vars, KEY_PREFIX_LOGS).unwrap_or(DEFAULT_PREFIX_LOGS);
-        let log_buffer_size = parse_var(vars, KEY_LOG_BUFFER_SIZE).unwrap_or(DEFAULT_LOG_BUFFER_SIZE);
+        let log_buffer_size =
+            parse_var(vars, KEY_LOG_BUFFER_SIZE).unwrap_or(DEFAULT_LOG_BUFFER_SIZE);
 
         // check
         if operational_mode == WatchdogMode::ModeHTTP && upstream_url.is_none() {
-            return Err(anyhow!("For \"mode=http\" you must specify a valid URL for \"http_upstream_url\""));
+            return Err(anyhow!(
+                "For \"mode=http\" you must specify a valid URL for \"http_upstream_url\""
+            ));
         }
         if operational_mode == WatchdogMode::ModeStatic && static_path == "" {
-            return Err(anyhow!("For mode=static you must specify the \"static_path\" to serve"));
+            return Err(anyhow!(
+                "For mode=static you must specify the \"static_path\" to serve"
+            ));
         }
 
         Ok(Self {
@@ -179,26 +188,25 @@ impl WatchdogConfig {
     }
 }
 
-
 #[inline]
-fn parse_var<T>(vars: &HashMap<String, String>, key: &'static str) -> Option<T> where T: FromStr {
+fn parse_var<T>(vars: &HashMap<String, String>, key: &'static str) -> Option<T>
+where
+    T: FromStr,
+{
     match vars.get(key) {
-        Some(str) => {
-            match str.parse::<T>() {
-                Ok(res) => Some(res),
-                _ => None
-            }
-        }
-        _ => None
+        Some(str) => match str.parse::<T>() {
+            Ok(res) => Some(res),
+            _ => None,
+        },
+        _ => None,
     }
 }
 
-
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-    use super::*;
     use super::WatchdogConfig;
+    use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn test_default() {
@@ -209,14 +217,16 @@ mod test {
             let f_process = "process".to_string();
             env.insert(key.to_string(), f_process.clone());
 
-            let cfg = WatchdogConfig::new(&env)
-                .expect("create default watchdog config error");
+            let cfg = WatchdogConfig::new(&env).expect("create default watchdog config error");
 
             assert_eq!(cfg._tcp_port, DEFAULT_PORT);
             assert_eq!(cfg._http_read_timeout.as_secs(), DEFAULT_READ_TIMEOUT_SEC);
             assert_eq!(cfg._http_write_timeout.as_secs(), DEFAULT_WRITE_TIMEOUT_SEC);
             assert_eq!(cfg._exec_timeout.as_secs(), DEFAULT_EXEC_TIMEOUT_SEC);
-            assert_eq!(cfg._health_check_interval.as_secs(), DEFAULT_WRITE_TIMEOUT_SEC);
+            assert_eq!(
+                cfg._health_check_interval.as_secs(),
+                DEFAULT_WRITE_TIMEOUT_SEC
+            );
             assert_eq!(cfg._function_process, f_process);
             assert_eq!(cfg._content_type, DEFAULT_CONTENT_TYPE);
             assert_eq!(cfg._inject_cgi_headers, INJECT_CGI_HEADERS);
@@ -253,8 +263,7 @@ mod test {
     fn test_static_mode() {
         let mut env = HashMap::new();
         env.insert(KEY_MODE.to_string(), "static".to_string());
-        let cfg = WatchdogConfig::new(&env)
-            .expect("create static mode watchdog config error");
+        let cfg = WatchdogConfig::new(&env).expect("create static mode watchdog config error");
         assert_eq!(cfg._function_process, String::default());
         assert_eq!(cfg._operational_mode, WatchdogMode::ModeStatic);
     }

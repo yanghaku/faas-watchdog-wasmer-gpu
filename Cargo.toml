@@ -37,4 +37,3 @@ wasm-cuda = ["wasm", "wasmer-cuda"]
 strip = true  # Automatically strip symbols from the binary.
 lto = true
 codegen-units = 1
-

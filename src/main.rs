@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 /// some help functions and macros
 #[macro_use]
 mod utils;
@@ -34,29 +33,25 @@ mod contrib;
 /// http server for watchdog
 mod server;
 
-
 extern crate lazy_static;
-extern crate core;
 
 use std::collections::HashMap;
+use std::env::args;
 use std::io::Write;
 use std::process::exit;
-use std::env::args;
 use std::time::SystemTime;
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, SecondsFormat};
 use log::{debug, error, info};
 
-use server::start_server;
-pub(crate) use utils::*;
 pub(crate) use config::*;
-pub(crate) use health::*;
 pub(crate) use contrib::*;
+pub(crate) use health::*;
+pub(crate) use utils::*;
 
 #[cfg(feature = "compiler")]
 use crate::runner::wasm_runner::{Compiler, KEY_WASM_C_CPU_FEATURES, KEY_WASM_C_TARGET_TRIPLE};
-
 
 /// main function for watchdog
 fn main() {
@@ -67,10 +62,19 @@ fn main() {
         "info"
     };
     let logger_env = env_logger::Env::default().default_filter_or(log_level);
-    env_logger::Builder::from_env(logger_env).format(|buf, record| {
-        let now = DateTime::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Millis, true);
-        writeln!(buf, "[watchdog {} {}] {}", now, record.level(), record.args())
-    }).init();
+    env_logger::Builder::from_env(logger_env)
+        .format(|buf, record| {
+            let now =
+                DateTime::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Millis, true);
+            writeln!(
+                buf,
+                "[watchdog {} {}] {}",
+                now,
+                record.level(),
+                record.args()
+            )
+        })
+        .init();
 
     let exit_code = match run(&args().collect(), environment_vars()) {
         Ok(_) => 0,
@@ -85,11 +89,11 @@ fn main() {
     exit(exit_code);
 }
 
-
 /// process the argument with given environment variables
 fn run(args: &Vec<String>, env: &HashMap<String, String>) -> Result<()> {
-    let bin_path = args.get(0).ok_or(
-        anyhow!("Cannot resolve the first argument"))?;
+    let bin_path = args
+        .get(0)
+        .ok_or(anyhow!("Cannot resolve the first argument"))?;
 
     match args.get(1).unwrap_or(&"".to_string()).as_str() {
         #[cfg(feature = "compiler")]
@@ -98,16 +102,23 @@ fn run(args: &Vec<String>, env: &HashMap<String, String>) -> Result<()> {
             let out_opt = args.get(3);
             let out_file = args.get(4);
 
-            if in_file.is_none() || out_file.is_none() ||
-                out_opt.is_none() || out_opt.unwrap().as_str().ne("-o") {
+            if in_file.is_none()
+                || out_file.is_none()
+                || out_opt.is_none()
+                || out_opt.unwrap().as_str().ne("-o")
+            {
                 // print help msg and report syntax error
                 print_helper(bin_path);
                 return if in_file.is_none() {
-                    Err(anyhow!("The following required arguments were not provided:\n\
-                      <IN_FILE> -o <OUT_FILE>\n"))
+                    Err(anyhow!(
+                        "The following required arguments were not provided:\n\
+                      <IN_FILE> -o <OUT_FILE>\n"
+                    ))
                 } else {
-                    Err(anyhow!("The following required arguments were not provided:\n\
-                      -o <OUT_FILE>\n"))
+                    Err(anyhow!(
+                        "The following required arguments were not provided:\n\
+                      -o <OUT_FILE>\n"
+                    ))
                 };
             }
             let triple = env.get(KEY_WASM_C_TARGET_TRIPLE).cloned();
@@ -132,14 +143,15 @@ fn run(args: &Vec<String>, env: &HashMap<String, String>) -> Result<()> {
             };
         }
 
-        _ => { // start the watchdog server and metrics server
+        _ => {
+            // start the watchdog server and metrics server
             print_version();
 
             let watchdog_config = WatchdogConfig::new(env)?;
             debug!("{:?}", watchdog_config);
 
             mark_healthy(watchdog_config._suppress_lock)?;
-            let res = start_server(watchdog_config);
+            let res = server::start_server(watchdog_config);
             mark_unhealthy()?;
 
             if res.is_err() {
@@ -151,16 +163,17 @@ fn run(args: &Vec<String>, env: &HashMap<String, String>) -> Result<()> {
     Ok(())
 }
 
-
 /// Get version and git commit sha-1 in build time
 #[inline(always)]
 fn get_version() -> (&'static str, &'static str) {
     const GIT_COMMIT_SHA: Option<&str> = option_env!("GIT_COMMIT_SHA");
     const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
     const UNKNOWN: &str = "unknown";
-    (VERSION.unwrap_or(UNKNOWN), GIT_COMMIT_SHA.unwrap_or(UNKNOWN))
+    (
+        VERSION.unwrap_or(UNKNOWN),
+        GIT_COMMIT_SHA.unwrap_or(UNKNOWN),
+    )
 }
-
 
 /// print the version
 #[inline(always)]
@@ -169,7 +182,6 @@ fn print_version() {
     println!("Version: {}\tSHA: {}\n", version, git_sha);
 }
 
-
 /// print the help message
 #[inline(always)]
 fn print_helper(bin_path: &String) {
@@ -177,12 +189,17 @@ fn print_helper(bin_path: &String) {
     println!("usage: {} [-c, --compile <IN_FILE> -o <OUT_FILE> ] [-v, --version] [-h, --help] [--run-healthcheck]", bin_path);
 
     #[cfg(not(feature = "compiler"))]
-    println!("usage: {} [-v, --version] [-h, --help] [--run-healthcheck]", bin_path);
+    println!(
+        "usage: {} [-v, --version] [-h, --help] [--run-healthcheck]",
+        bin_path
+    );
 
     println!("optional arguments:");
 
     #[cfg(feature = "compiler")]
-    println!("  -c, --compile <IN_FILE> -o <OUT_FILE>    Compile the wasm module to dylib and exit.");
+    println!(
+        "  -c, --compile <IN_FILE> -o <OUT_FILE>    Compile the wasm module to dylib and exit."
+    );
 
     println!("  -v, --version                            Print the version and exit.");
     println!("  -h, --help                               Print the help information and exit.");

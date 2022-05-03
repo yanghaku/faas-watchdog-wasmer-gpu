@@ -1,14 +1,12 @@
+use log::{debug, info};
 /// This custom thread-pool implementation is study from https://crates.io/crates/threadpool
 /// But the condition variable we use implements blocking queue instead of channel
 use std::collections::VecDeque;
-use std::sync::{Arc, Condvar, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
-use log::{debug, info};
-
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
-
 
 /// The data for a thread pool
 struct ThreadPoolEntry {
@@ -34,7 +32,6 @@ struct ThreadPoolEntry {
     _join_cond_var: Condvar,
 }
 
-
 /// [```ThreadPool```]
 ///
 /// # Examples
@@ -55,11 +52,17 @@ pub(crate) struct ThreadPool {
     _inner: Arc<ThreadPoolEntry>,
 }
 
-
 impl ThreadPool {
-    pub(crate) fn new(thread_num: usize, thread_name: Option<String>, stack_size: Option<usize>) -> Self {
-        info!("Start thread pool `{}`, thread number is {}",
-            thread_name.as_ref().unwrap_or(&"None".to_string()), thread_num);
+    pub(crate) fn new(
+        thread_num: usize,
+        thread_name: Option<String>,
+        stack_size: Option<usize>,
+    ) -> Self {
+        info!(
+            "Start thread pool `{}`, thread number is {}",
+            thread_name.as_ref().unwrap_or(&"None".to_string()),
+            thread_num
+        );
 
         let pool = Self {
             _inner: Arc::new(ThreadPoolEntry {
@@ -72,30 +75,31 @@ impl ThreadPool {
                 _panicked_thread_num: AtomicUsize::new(0),
                 _join_mutex: Mutex::default(),
                 _join_cond_var: Condvar::default(),
-            })
+            }),
         };
 
-        for _ in 0..thread_num { // create threads
+        for _ in 0..thread_num {
+            // create threads
             pool.spawn_one();
         }
 
         pool
     }
 
-
     #[inline(always)]
-    pub(crate) fn execute<F>(&self, f: F) where F: FnOnce() + Send + 'static {
+    pub(crate) fn execute<F>(&self, f: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
         let mut q = self._inner._job_queue.lock().unwrap();
         q.push_back(Box::new(f));
         self._inner._job_queue_not_empty.notify_one();
     }
 
-
     #[inline(always)]
     pub(crate) fn queued_job_num(&self) -> usize {
         self._inner._job_queue.lock().unwrap().len()
     }
-
 
     #[inline(always)]
     #[allow(dead_code)]
@@ -103,29 +107,26 @@ impl ThreadPool {
         self._inner._active_thread_num.load(Ordering::Relaxed)
     }
 
-
     #[inline(always)]
     #[allow(dead_code)]
     pub(crate) fn panicked_thread_num(&self) -> usize {
         self._inner._panicked_thread_num.load(Ordering::Relaxed)
     }
 
-
     #[inline(always)]
     pub(crate) fn thread_num(&self) -> usize {
         self._inner._thread_num.load(Ordering::Relaxed)
     }
 
-
     pub(crate) fn set_thread_num(&self, size: usize) {
         let old_size = self._inner._thread_num.swap(size, Ordering::Release);
-        if old_size < size {    // if expand, spawn the new threads
+        if old_size < size {
+            // if expand, spawn the new threads
             for _ in old_size..size {
                 self.spawn_one();
             }
         }
     }
-
 
     /// get a job from job queue
     fn get_job(&self) -> Option<Job> {
@@ -135,11 +136,12 @@ impl ThreadPool {
         }
 
         // active number increase
-        self._inner._active_thread_num.fetch_add(1, Ordering::SeqCst);
+        self._inner
+            ._active_thread_num
+            .fetch_add(1, Ordering::SeqCst);
 
         q.pop_front()
     }
-
 
     /// spawn a new thread for a thread pool
     fn spawn_one(&self) {
@@ -152,29 +154,37 @@ impl ThreadPool {
         }
 
         let pool = self.clone();
-        builder.spawn(move || {
-            let mut sentinel = Sentinel::new(&pool);
+        builder
+            .spawn(move || {
+                let mut sentinel = Sentinel::new(&pool);
 
-            loop {
-                if pool._inner._active_thread_num.load(Ordering::SeqCst) > pool.thread_num() {
-                    break; // shrink
+                loop {
+                    if pool._inner._active_thread_num.load(Ordering::SeqCst) > pool.thread_num() {
+                        break; // shrink
+                    }
+
+                    let job = match pool.get_job() {
+                        Some(val) => val,
+                        None => {
+                            break;
+                        }
+                    };
+
+                    job(); // may throw panic, and caught by sentinel
+
+                    let previous = pool
+                        ._inner
+                        ._active_thread_num
+                        .fetch_sub(1, Ordering::SeqCst);
+                    if previous == 1 && pool.queued_job_num() == 0 {
+                        // notify all join thread
+                        pool._inner._join_cond_var.notify_all();
+                    }
                 }
 
-                let job = match pool.get_job() {
-                    Some(val) => val,
-                    None => { break; }
-                };
-
-                job();  // may throw panic, and caught by sentinel
-
-                let previous = pool._inner._active_thread_num.fetch_sub(1, Ordering::SeqCst);
-                if previous == 1 && pool.queued_job_num() == 0 { // notify all join thread
-                    pool._inner._join_cond_var.notify_all();
-                }
-            }
-
-            sentinel.cancel(); // normally stop
-        }).unwrap();
+                sentinel.cancel(); // normally stop
+            })
+            .unwrap();
     }
 
     #[inline(always)]
@@ -182,7 +192,6 @@ impl ThreadPool {
     fn has_work(&self) -> bool {
         self._inner._active_thread_num.load(Ordering::SeqCst) > 0 || self.queued_job_num() > 0
     }
-
 
     #[allow(dead_code)]
     pub(crate) fn join(&self) {
@@ -197,7 +206,6 @@ impl ThreadPool {
         }
     }
 }
-
 
 /// for fix the panicked thread in thread pool
 struct Sentinel<'a> {
@@ -221,7 +229,11 @@ impl<'a> Sentinel<'a> {
 impl<'a> Drop for Sentinel<'a> {
     fn drop(&mut self) {
         if self._active {
-            let previous = self._pool._inner._active_thread_num.fetch_sub(1, Ordering::SeqCst);
+            let previous = self
+                ._pool
+                ._inner
+                ._active_thread_num
+                .fetch_sub(1, Ordering::SeqCst);
 
             if previous == 1 && self._pool.queued_job_num() == 0 {
                 self._pool._inner._join_cond_var.notify_all();
@@ -229,16 +241,19 @@ impl<'a> Drop for Sentinel<'a> {
 
             if std::thread::panicking() {
                 debug!("{:?} panic", thread::current());
-                self._pool._inner._panicked_thread_num.fetch_add(1, Ordering::SeqCst);
+                self._pool
+                    ._inner
+                    ._panicked_thread_num
+                    .fetch_add(1, Ordering::SeqCst);
             }
             self._pool.spawn_one(); // spawn a new thread in pool to fix the panicked thread
         }
     }
 }
 
-
 #[cfg(test)]
 mod test {
+    use super::ThreadPool;
     use std::{
         sync::atomic::{AtomicUsize, Ordering},
         sync::{Arc, Barrier},
@@ -246,8 +261,6 @@ mod test {
         thread::sleep,
         time::Duration,
     };
-    use super::ThreadPool;
-
 
     #[test]
     fn test_active() {
@@ -274,7 +287,6 @@ mod test {
 
         b_end.wait();
     }
-
 
     #[test]
     fn test_panic() {
@@ -303,7 +315,6 @@ mod test {
         assert_eq!(thread_num, exec_num.load(Ordering::Acquire));
     }
 
-
     #[test]
     fn test_shrink() {
         let before = 10;
@@ -329,7 +340,6 @@ mod test {
         assert_eq!(0, pool.panicked_thread_num());
     }
 
-
     #[test]
     fn test_expand() {
         let pool = ThreadPool::new(1, None, None);
@@ -354,7 +364,6 @@ mod test {
         pool.join();
     }
 
-
     #[test]
     fn test_empty() {
         let thread_num = 10;
@@ -366,7 +375,6 @@ mod test {
 
         pool.join();
     }
-
 
     #[test]
     fn test_join() {
@@ -399,7 +407,8 @@ mod test {
             t.spawn(move || {
                 _pool.join();
                 assert_eq!(test_num * 2, _exec_num.load(Ordering::Acquire));
-            }).unwrap();
+            })
+            .unwrap();
         }
 
         pool.join();

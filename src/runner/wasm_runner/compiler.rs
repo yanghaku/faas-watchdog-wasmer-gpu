@@ -11,13 +11,12 @@ use log::{info, warn};
 use wasmer::{Dylib, DylibArtifact, Module, Store, Triple};
 
 #[cfg(feature = "compiler")]
-use wasmer::{CpuFeature, Engine, LLVM, Target};
+use wasmer::{CpuFeature, Engine, Target, LLVM};
 
 pub(crate) struct Compiler {
     _store: Store,
     _out_extension: &'static str,
 }
-
 
 /// The implementation for webassembly compiler wrapper
 /// default engine is Dylib
@@ -41,17 +40,21 @@ impl Compiler {
         })
     }
 
-
     #[cfg(not(feature = "compiler"))]
     /// Create new compiler with headless engine
     pub(crate) fn new(target_triple: Option<String>, cpu_features: Option<String>) -> Result<Self> {
         if target_triple.is_some() {
-            warn!("No Compiler! environment variable `{}` is set but not used", super::KEY_WASM_C_TARGET_TRIPLE);
+            warn!(
+                "No Compiler! environment variable `{}` is set but not used",
+                super::KEY_WASM_C_TARGET_TRIPLE
+            );
         }
         if cpu_features.is_some() {
-            warn!("No Compiler! environment variable `{}` is set but not used", super::KEY_WASM_C_CPU_FEATURES);
+            warn!(
+                "No Compiler! environment variable `{}` is set but not used",
+                super::KEY_WASM_C_CPU_FEATURES
+            );
         }
-
 
         let engine = Dylib::headless().engine();
         Ok(Self {
@@ -60,16 +63,15 @@ impl Compiler {
         })
     }
 
-
     /// if the wasm module has been compiled to native binary file, return the deserialize module
     /// else do compile and return the compiled module
     /// todo: add safety strategy for cached file
     #[allow(unused_mut)]
     pub(crate) fn try_load_compiled(&self, mut wasm_file: PathBuf) -> Result<Module> {
         #[cfg(feature = "compiler")]
-            let mut compiled_file = wasm_file.clone();
+        let mut compiled_file = wasm_file.clone();
         #[cfg(not(feature = "compiler"))]
-            let mut compiled_file = wasm_file; // just move
+        let mut compiled_file = wasm_file; // just move
 
         compiled_file.set_extension(self._out_extension);
 
@@ -82,12 +84,14 @@ impl Compiler {
                     return Ok(module);
                 }
                 Err(e) => {
-                    warn!("Compiled wasm module file `{}` exist, but can not be loaded! error = {:?}",
-                        compiled_file.display(), e);
+                    warn!(
+                        "Compiled wasm module file `{}` exist, but can not be loaded! error = {:?}",
+                        compiled_file.display(),
+                        e
+                    );
                 }
             }
         }
-
 
         #[cfg(feature = "compiler")]
         return {
@@ -95,7 +99,10 @@ impl Compiler {
 
             wasm_file.set_extension("wasm");
             if !wasm_file.is_file() {
-                return Err(anyhow!("No such Webassembly module file: `{}`", wasm_file.display()));
+                return Err(anyhow!(
+                    "No such Webassembly module file: `{}`",
+                    wasm_file.display()
+                ));
             }
             let wasm_bytes = fs::read(wasm_file)?;
             let (module, duration) = self.do_compile(&wasm_bytes)?;
@@ -107,7 +114,10 @@ impl Compiler {
                     info!("Serialize the module and save to module file success");
                 }
                 Err(e) => {
-                    warn!("Serialize the module and save to module file fail! error = {:?}", e);
+                    warn!(
+                        "Serialize the module and save to module file fail! error = {:?}",
+                        e
+                    );
                 }
             }
 
@@ -118,12 +128,16 @@ impl Compiler {
         #[cfg(not(feature = "compiler"))]
         return {
             if !compiled_file.is_file() {
-                log::error!("Cannot find the webassembly file `{}`", compiled_file.display());
+                log::error!(
+                    "Cannot find the webassembly file `{}`",
+                    compiled_file.display()
+                );
             }
-            Err(anyhow!("Deserialize module fail and no compiler feature enable"))
+            Err(anyhow!(
+                "Deserialize module fail and no compiler feature enable"
+            ))
         };
     }
-
 
     /// do the compile stage, compile the wasm bytes to native code and return time duration
     #[inline(always)]
@@ -136,7 +150,6 @@ impl Compiler {
         let end_time = SystemTime::now();
         Ok((module, end_time.duration_since(start_time).unwrap()))
     }
-
 
     /// compile from wasm file to dylib file
     #[inline(always)]
@@ -153,37 +166,50 @@ impl Compiler {
         let out_path = PathBuf::from(out_file);
         fs::write(out_file, binary)?;
 
-
         // check the out file extension
-        let out_filename = out_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+        let out_filename = out_path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         match out_path.extension() {
             Some(ext) => {
                 if ext != self._out_extension {
-                    warn!("The output file has a wrong extension. \
-                    We recommend using `{}.{}` for the chosen target", out_filename, &self._out_extension);
+                    warn!(
+                        "The output file has a wrong extension. \
+                    We recommend using `{}.{}` for the chosen target",
+                        out_filename, &self._out_extension
+                    );
                 }
             }
             None => {
-                warn!("The output file has no extension. \
-                We recommend using `{}.{}` for the chosen target", out_filename, &self._out_extension);
+                warn!(
+                    "The output file has no extension. \
+                We recommend using `{}.{}` for the chosen target",
+                    out_filename, &self._out_extension
+                );
             }
         }
 
-        info!("Compile {} to {} success! \nTime usage = {} ms", in_file, out_file, duration.as_millis());
+        info!(
+            "Compile {} to {} success! \nTime usage = {} ms",
+            in_file,
+            out_file,
+            duration.as_millis()
+        );
         Ok(())
     }
 
-
     #[cfg(feature = "compiler")]
-    fn parse_target(triple_opt: Option<String>, cpu_features_str: Option<String>) -> Result<Target> {
+    fn parse_target(
+        triple_opt: Option<String>,
+        cpu_features_str: Option<String>,
+    ) -> Result<Target> {
         let triple = match triple_opt {
             None => Triple::host(),
-            Some(triple_str) => {
-                triple_str.parse::<Triple>()
-                    .map_err(|e| {
-                        anyhow!("Parse the target triple error: {}", e.to_string())
-                    })?
-            }
+            Some(triple_str) => triple_str
+                .parse::<Triple>()
+                .map_err(|e| anyhow!("Parse the target triple error: {}", e.to_string()))?,
         };
 
         let cpu_features = match cpu_features_str {
@@ -197,11 +223,10 @@ impl Compiler {
     }
 }
 
-
 #[cfg(test)]
 mod test {
-    use wasmer::Target;
     use super::Compiler;
+    use wasmer::Target;
 
     #[test]
     fn test_default() {
@@ -213,12 +238,15 @@ mod test {
     #[test]
     #[cfg(feature = "compiler")]
     fn test_triples() {
-        let triples = vec!["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "i386-pc-windows-msvc"];
+        let triples = vec![
+            "aarch64-apple-darwin",
+            "x86_64-unknown-linux-gnu",
+            "i386-pc-windows-msvc",
+        ];
         let extensions = vec!["dylib", "so", "dll"];
 
         for i in 0..triples.len() {
-            let compiler = Compiler::new(
-                Some(triples[i].to_string()), None);
+            let compiler = Compiler::new(Some(triples[i].to_string()), None);
             assert!(compiler.is_ok());
             assert_eq!(compiler.unwrap()._out_extension, extensions[i]);
         }

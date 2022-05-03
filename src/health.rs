@@ -3,28 +3,24 @@ use std::fs::{create_dir, File};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-#[cfg(unix)]
 use std::fs::Permissions;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 use anyhow::{anyhow, Result};
 use log::warn;
 
-
 /// the lock filename for health check
 const LOCK_FILE_NAME: &str = ".lock";
 
-
 /// now if the server accept connections
 static ACCEPTING_CONNECTIONS: AtomicBool = AtomicBool::new(false);
-
 
 /// check the lockfile if file present or not
 #[inline(always)]
 pub(crate) fn lock_file_present() -> bool {
     temp_dir().join(LOCK_FILE_NAME).is_file()
 }
-
 
 fn create_lock_file() -> Result<()> {
     if !temp_dir().exists() {
@@ -40,7 +36,6 @@ fn create_lock_file() -> Result<()> {
     Ok(())
 }
 
-
 pub(crate) fn mark_healthy(suppress_lock: bool) -> Result<()> {
     ACCEPTING_CONNECTIONS.store(true, Ordering::Release);
 
@@ -50,18 +45,20 @@ pub(crate) fn mark_healthy(suppress_lock: bool) -> Result<()> {
     } else {
         match create_lock_file() {
             Ok(_) => Ok(()),
-            Err(e) => Err(anyhow!("Cannot write {}. To disable lock-file set env suppress_lock=true.\n\
-                 Error: {}.\n", temp_dir().join(LOCK_FILE_NAME).display(), e.to_string()))
+            Err(e) => Err(anyhow!(
+                "Cannot write {}. To disable lock-file set env suppress_lock=true.\n\
+                 Error: {}.\n",
+                temp_dir().join(LOCK_FILE_NAME).display(),
+                e.to_string()
+            )),
         }
     };
 }
-
 
 #[inline(always)]
 pub(crate) fn check_healthy() -> bool {
     ACCEPTING_CONNECTIONS.load(Ordering::Acquire) || lock_file_present()
 }
-
 
 pub(crate) fn mark_unhealthy() -> Result<(), std::io::Error> {
     ACCEPTING_CONNECTIONS.store(false, Ordering::Release);

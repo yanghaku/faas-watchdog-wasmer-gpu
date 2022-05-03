@@ -7,27 +7,25 @@ mod thread_pool;
 /// the virtual file system for stdin/stdout/stderr
 mod stdio;
 
-
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::channel;
+use std::sync::Arc;
 use std::thread;
 use std::time::SystemTime;
 
 use anyhow::{anyhow, Result};
-use hyper::{Body, Request, Response};
 use hyper::header::HeaderValue;
+use hyper::{Body, Request, Response};
 use log::{debug, info};
 use wasmer_wasi::WasiState;
 
-use crate::*;
 use super::Runner;
+use crate::*;
 pub(crate) use compiler::Compiler;
-use stdio::{Stdin, Stdout, Stderr};
+use stdio::{Stderr, Stdin, Stdout};
 use thread_pool::ThreadPool;
-
 
 /// default use now file system as root
 pub(crate) const DEFAULT_WASM_ROOT: &str = "/";
@@ -41,7 +39,6 @@ const DEFAULT_MAX_SCALE: usize = 4096;
 #[cfg(feature = "wasm-cuda")]
 pub(crate) const DEFAULT_USE_CUDA: bool = false;
 pub(crate) const KEY_USE_CUDA: &str = "use_cuda";
-
 
 /// The data for wasm runner
 struct WasmRunnerEntry {
@@ -83,7 +80,6 @@ struct WasmRunnerEntry {
     _wasm_root: PathBuf,
 }
 
-
 /// [```WasmRunner```]
 /// run the function request in WebAssembly
 #[cfg(feature = "wasm")]
@@ -91,7 +87,6 @@ struct WasmRunnerEntry {
 pub(crate) struct WasmRunner {
     _inner: Arc<WasmRunnerEntry>,
 }
-
 
 impl Runner for WasmRunner {
     fn run(&self, req: Request<Body>, res: &mut Response<Body>) -> Result<()> {
@@ -114,7 +109,8 @@ impl Runner for WasmRunner {
         *res.body_mut() = res_body?;
 
         // set content type
-        res.headers_mut().insert("Content-Type", self._inner._response_content_type.clone());
+        res.headers_mut()
+            .insert("Content-Type", self._inner._response_content_type.clone());
         Ok(())
     }
 
@@ -124,17 +120,25 @@ impl Runner for WasmRunner {
         let available_replicas = self._inner._max_scale - replicas;
         let invocation_count = self._inner._invoke_count.load(Ordering::Relaxed);
 
-        info!("Read scale: Replicas=`{}`, Available Replicas=`{}`, Invocation Count=`{}`",
-                        replicas,available_replicas,invocation_count);
+        info!(
+            "Read scale: Replicas=`{}`, Available Replicas=`{}`, Invocation Count=`{}`",
+            replicas, available_replicas, invocation_count
+        );
 
         (replicas, available_replicas, invocation_count)
     }
 
     fn set_scale(&self, replicas: usize) -> Result<()> {
         if replicas < self._inner._min_scale {
-            Err(anyhow!("Replicas can not less then `{}`!", self._inner._min_scale))
+            Err(anyhow!(
+                "Replicas can not less then `{}`!",
+                self._inner._min_scale
+            ))
         } else if replicas > self._inner._max_scale {
-            Err(anyhow!("Replicas can not greater than `{}`!", self._inner._max_scale))
+            Err(anyhow!(
+                "Replicas can not greater than `{}`!",
+                self._inner._max_scale
+            ))
         } else {
             self._inner._worker.set_thread_num(replicas);
             info!("Wasm runner set the replicas to `{}`", replicas);
@@ -143,26 +147,34 @@ impl Runner for WasmRunner {
     }
 }
 
-
 impl WasmRunner {
     /// create a new wasm runner
     pub(crate) fn new(config: WatchdogConfig) -> Result<Self> {
-        let wasm_root = PathBuf::from(
-            env_get_or_warn!(config._wasm_root, KEY_WASM_ROOT, DEFAULT_WASM_ROOT.to_string()));
+        let wasm_root = PathBuf::from(env_get_or_warn!(
+            config._wasm_root,
+            KEY_WASM_ROOT,
+            DEFAULT_WASM_ROOT.to_string()
+        ));
         let min_scale = env_get_or_warn!(config._min_scale, KEY_MIN_SCALE, DEFAULT_MIN_SCALE);
         let max_scale = env_get_or_warn!(config._max_scale, KEY_MAX_SCALE, DEFAULT_MAX_SCALE);
 
         #[cfg(feature = "wasm-cuda")]
-            let use_cuda = env_get_or_warn!(config._use_cuda, KEY_USE_CUDA, DEFAULT_USE_CUDA);
+        let use_cuda = env_get_or_warn!(config._use_cuda, KEY_USE_CUDA, DEFAULT_USE_CUDA);
         #[cfg(feature = "wasm-cuda")]
         info!("Running Webassembly with cuda support = `{}`", use_cuda);
         #[cfg(not(feature = "wasm-cuda"))]
         if let Some(use_cuda) = config._use_cuda {
             if use_cuda {
-                log::error!("The environment variable `{}` is `true`, but this version cannot \
-                        support cuda! please enable `wasm-cuda` features", KEY_USE_CUDA);
+                log::error!(
+                    "The environment variable `{}` is `true`, but this version cannot \
+                        support cuda! please enable `wasm-cuda` features",
+                    KEY_USE_CUDA
+                );
             } else {
-                warn!("The environment variable `{}` is set but not used", KEY_USE_CUDA)
+                log::warn!(
+                    "The environment variable `{}` is set but not used",
+                    KEY_USE_CUDA
+                )
             }
         }
 
@@ -171,7 +183,6 @@ impl WasmRunner {
         } else {
             config._log_buffer_size as usize
         };
-
 
         let func_process = parse_command(&config._function_process)?;
 
@@ -185,7 +196,12 @@ impl WasmRunner {
         let thread_pool = ThreadPool::new(min_scale, Some(func_process[0].clone()), None);
 
         let duration = SystemTime::now().duration_since(start_time).unwrap();
-        info!("Deploy function {} took {} us  ({} ms)",func_process[0], duration.as_micros(), duration.as_millis());
+        info!(
+            "Deploy function {} took {} us  ({} ms)",
+            func_process[0],
+            duration.as_micros(),
+            duration.as_millis()
+        );
 
         Ok(Self {
             _inner: Arc::new(WasmRunnerEntry {
@@ -202,10 +218,9 @@ impl WasmRunner {
                 _use_cuda: use_cuda,
                 _module: module,
                 _wasm_root: wasm_root,
-            })
+            }),
         })
     }
-
 
     /// run the function in thread pool
     /// return the stdout as response body
@@ -229,8 +244,8 @@ impl WasmRunner {
         let stderr = Box::new(Stderr::new(
             format!("{:?}-`{}`", thread_id, func_process[0]),
             self._inner._log_prefix,
-            self._inner._log_buffer_size)
-        );
+            self._inner._log_buffer_size,
+        ));
 
         // build the wasi environment
         let mut wasi_env = WasiState::new(func_process[0].as_str())
@@ -263,8 +278,13 @@ impl WasmRunner {
         m.call(&[])?;
 
         let duration = SystemTime::now().duration_since(start_time).unwrap();
-        info!("{:?} run function `{}` took {} us  ({} ms)", thread_id, func_process[0],
-            duration.as_micros(), duration.as_millis());
+        info!(
+            "{:?} run function `{}` took {} us  ({} ms)",
+            thread_id,
+            func_process[0],
+            duration.as_micros(),
+            duration.as_millis()
+        );
 
         // read stdout to response body
         if let Some(wasi_stdout_box) = wasi_env.state().fs.stdout_mut()? {
