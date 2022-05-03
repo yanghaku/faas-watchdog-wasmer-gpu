@@ -44,10 +44,9 @@ pub(crate) fn start_server(config: WatchdogConfig) -> Result<()> {
 
     info!("Metrics listening on port: {}", config._metrics_port);
     // start the metrics server in another thread
-    let metrics_config = config.clone();
     thread::Builder::new().spawn(move || {
         // metrics only use 1 threads
-        if let Err(e) = metrics::build_and_serve("metrics", metrics_addr, 1, metrics_config) {
+        if let Err(e) = metrics::build_and_serve("metrics", metrics_addr, 1) {
             error!("Metrics server error! {}", e);
             // stop process
             std::process::exit(1);
@@ -55,7 +54,7 @@ pub(crate) fn start_server(config: WatchdogConfig) -> Result<()> {
     })?;
 
     // generate the request handler
-    info!("Listening on http://{}", watchdog_addr);
+    info!("Listening on port: {}", config._tcp_port);
     // block in current thread
     let num_thread = num_cpus::get();
     // default use the cpus number as thread num

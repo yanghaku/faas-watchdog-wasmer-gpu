@@ -2,15 +2,18 @@ use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use hyper::body::to_bytes;
+use hyper::header::CONTENT_TYPE;
 use hyper::http::HeaderValue;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use lazy_static::lazy_static;
 use log::error;
 
+use super::metrics::{IN_FLIGHT, REQUESTS_TOTAL, REQUEST_DURATION_HISTOGRAM};
 use super::shutdown_signal;
 use crate::runner::{
     ForkingRunner, HttpRunner, Runner, SerializingForkRunner, StaticFileProcessor,
@@ -19,6 +22,19 @@ use crate::*;
 
 #[cfg(feature = "wasm")]
 use crate::runner::WasmRunner;
+
+/// convert method to static str
+macro_rules! method_to_str {
+    ($method:expr) => {
+        match $method {
+            &Method::GET => "get",
+            &Method::POST => "post",
+            &Method::PUT => "put",
+            &Method::DELETE => "delete",
+            _ => "options",
+        }
+    };
+}
 
 pub(super) struct WatchdogMakeSvc<R>
 where
@@ -109,7 +125,7 @@ async fn handle<R: Runner>(runner: R, req: Request<Body>) -> Result<Response<Bod
 
             response
                 .headers_mut()
-                .insert("Content-Type", JSON_CONTENT_TYPE.clone());
+                .insert(CONTENT_TYPE, JSON_CONTENT_TYPE.clone());
             *response.body_mut() = Body::from(status.into_json());
         }
         "/scale-updater" => match ScaleServiceRequest::from_json(get_body_string(req).await) {
@@ -128,12 +144,28 @@ async fn handle<R: Runner>(runner: R, req: Request<Body>) -> Result<Response<Bod
             }
         },
         _ => {
+            IN_FLIGHT.inc();
+            let start_time = SystemTime::now();
+            let method = method_to_str!(req.method());
+            let label;
+
             // for every other path and method
             if let Err(ref err) = runner.run(req, &mut response) {
                 *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
                 *response.body_mut() = Body::from(err.to_string());
                 error!("{}", err.to_string());
+                label = ["500", method];
+            } else {
+                label = ["200", method];
             }
+
+            REQUESTS_TOTAL.with_label_values(&label).inc();
+            REQUEST_DURATION_HISTOGRAM
+                .with_label_values(&label)
+                .observe(duration_to_seconds(
+                    SystemTime::now().duration_since(start_time).unwrap(),
+                ));
+            IN_FLIGHT.dec();
         }
     }
 
@@ -149,6 +181,13 @@ lazy_static! {
 async fn get_body_string(req: Request<Body>) -> Result<String> {
     let bytes = to_bytes(req.into_body()).await?;
     Ok(String::from(std::str::from_utf8(bytes.as_ref())?))
+}
+
+/// `duration_to_seconds` converts Duration to seconds. (copy from prometheus)
+#[inline]
+pub fn duration_to_seconds(d: Duration) -> f64 {
+    let nanos = f64::from(d.subsec_nanos()) / 1e9;
+    d.as_secs() as f64 + nanos
 }
 
 /// build watchdog server and serve

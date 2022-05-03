@@ -16,8 +16,9 @@ log = "0.4"
 num_cpus = "1.13"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 env_logger = { version = "0.9", default-features = false }
-hyper = { version = "0.14", default-features = false, features = ["server", "http1", "http2", "runtime"] }
+hyper = { version = "0.14", default-features = false, features = ["server", "http1", "http2", "tcp"] }
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "signal"] }
+prometheus = { version = "0.13", default-features = false }
 
 wasmer = { version = ">=2.2", optional = true, default-features = false, features = ["dylib"] }
 wasmer-wasi = { version = ">=2.2", optional = true, default-features = false, features = ["host-fs", "sys", "disable-all-logging"] }

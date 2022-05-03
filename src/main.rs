@@ -25,9 +25,6 @@ mod health;
 /// runner (such as http mode, wasm mode)
 mod runner;
 
-/// metrics
-mod metrics;
-
 mod contrib;
 
 /// http server for watchdog

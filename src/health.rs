@@ -8,7 +8,7 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;
 
 use anyhow::{anyhow, Result};
-use log::warn;
+use log::{info, warn};
 
 /// the lock filename for health check
 const LOCK_FILE_NAME: &str = ".lock";
@@ -27,7 +27,9 @@ fn create_lock_file() -> Result<()> {
         create_dir(temp_dir())?;
     }
 
-    let file = File::create(temp_dir().join(LOCK_FILE_NAME))?;
+    let path = temp_dir().join(LOCK_FILE_NAME);
+    info!("Writing lock-file to: {}", path.display());
+    let file = File::create(path)?;
     file.set_len(0)?;
 
     #[cfg(unix)]
