@@ -47,14 +47,14 @@ macro_rules! push_option_string {
 }
 
 impl ReplicaFuncStatus {
-    const NAME_KEY: &'static str = "name";
-    const IMAGE_KEY: &'static str = "image";
-    const NAMESPACE_KEY: &'static str = "namespace";
-    const ENV_PROCESS_KEY: &'static str = "envProcess";
-    const ENV_VARS_KEY: &'static str = "envVars";
-    const INVOCATION_COUNT_KEY: &'static str = "invocationCount";
-    const REPLICAS_COUNT_KEY: &'static str = "replicas";
-    const AVAILABLE_REPLICAS_KEY: &'static str = "availableReplicas";
+    const NAME_KEY: &'static str = r#""name""#;
+    const IMAGE_KEY: &'static str = r#""image""#;
+    const NAMESPACE_KEY: &'static str = r#""namespace""#;
+    const ENV_PROCESS_KEY: &'static str = r#""envProcess""#;
+    const ENV_VARS_KEY: &'static str = r#""envVars""#;
+    const INVOCATION_COUNT_KEY: &'static str = r#""invocationCount""#;
+    const REPLICAS_COUNT_KEY: &'static str = r#""replicas""#;
+    const AVAILABLE_REPLICAS_KEY: &'static str = r#""availableReplicas""#;
 
     const OBJECT_LEFT: &'static str = "{";
     const OBJECT_RIGHT: &'static str = "}";
@@ -134,8 +134,8 @@ pub(crate) struct ScaleServiceRequest {
 
 impl ScaleServiceRequest {
     #[allow(dead_code)]
-    const SERVICE_NAME_KEY: &'static str = "serviceName";
-    const REPLICAS_KEY: &'static str = "replicas";
+    const SERVICE_NAME_KEY: &'static str = r#""serviceName""#;
+    const REPLICAS_KEY: &'static str = r#""replicas""#;
     const COLON: u8 = b':';
 
     pub(crate) fn from_json(res_s: Result<String>) -> Result<Self> {

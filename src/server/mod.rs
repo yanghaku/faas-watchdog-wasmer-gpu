@@ -31,7 +31,7 @@ use tokio::signal::ctrl_c;
 
 use crate::WatchdogConfig;
 
-const DEFAULT_IP_STR: &str = "127.0.0.1";
+const DEFAULT_IP_STR: &str = "0.0.0.0";
 
 /// start the watchdog server and metrics server
 pub(crate) fn start_server(config: WatchdogConfig) -> Result<()> {
