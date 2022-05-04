@@ -250,12 +250,18 @@ impl WasmRunner {
         // build the wasi environment
         let mut wasi_env = WasiState::new(func_process[0].as_str())
             .args(&func_process[1..func_process.len()])
-            .map_dir("/", self._inner._wasm_root.as_path())?
             .stdin(stdin)
             .stdout(stdout)
             .stderr(stderr)
             .envs(environment)
             .env("PWD", "/")
+            .preopen(|p| {
+                p.directory(self._inner._wasm_root.as_path())
+                    .alias("/")
+                    .read(true)
+                    .write(false)
+                    .create(false)
+            })?
             .finalize()?;
 
         let mut import_object = wasi_env.import_object(&self._inner._module)?;
