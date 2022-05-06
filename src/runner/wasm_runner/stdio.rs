@@ -1,8 +1,8 @@
+use std::cmp;
 use std::io::{Error, ErrorKind, Read, Result, Seek, SeekFrom, Write};
 
-use hyper::body::{Bytes, HttpBody};
-use hyper::Body;
-use tokio::runtime::{Builder, Runtime};
+use hyper::body::{Buf, Bytes};
+use tokio::sync::mpsc::Receiver;
 use wasmer_wasi::{WasiFile, WasiFsError};
 
 /// for impl the interface WasiFile
@@ -129,37 +129,50 @@ macro_rules! impl_unwritable {
 pub(super) struct Stdin {
     /// the buffer array
     _buffer: Bytes,
-    /// the http body data
-    _http_body: Body,
-    /// async data handle
-    _async_handle: Runtime,
+    /// body receiver
+    _buf_receiver: Receiver<anyhow::Result<Bytes, hyper::Error>>,
+    /// is end of file
+    _is_eof: bool,
 }
 
 impl Stdin {
-    pub(super) fn new(body: Body) -> Result<Self> {
-        Ok(Self {
+    pub(super) fn new(buf_receiver: Receiver<anyhow::Result<Bytes, hyper::Error>>) -> Self {
+        Self {
             _buffer: Bytes::new(),
-            _http_body: body,
-            _async_handle: Builder::new_current_thread().enable_all().build()?,
-        })
+            _buf_receiver: buf_receiver,
+            _is_eof: false,
+        }
     }
 
-    /// poll the new chunk to this buffer (replace the old buffer)
+    /// poll the new chunk to this buffer
+    /// if old buffer is empty, replace the old buffer, else do nothing
     #[inline(always)]
     fn poll_data(&mut self) -> Result<bool> {
-        match self._async_handle.block_on(self._http_body.data()) {
+        if self._is_eof {
+            return Ok(false);
+        }
+        if self._buffer.has_remaining() {
+            return Ok(true);
+        }
+        match self._buf_receiver.blocking_recv() {
             Some(Ok(chunk)) => {
                 self._buffer = chunk;
                 Ok(true)
             }
-            Some(Err(e)) => Err(Error::new(ErrorKind::Other, e.to_string())),
-            None => Ok(false),
+            Some(Err(e)) => {
+                self._is_eof = true;
+                Err(Error::new(ErrorKind::Other, e.to_string()))
+            }
+            None => {
+                self._is_eof = true;
+                Ok(false)
+            }
         }
     }
 
     #[inline(always)]
     fn bytes_available(&self) -> usize {
-        self._http_body.size_hint().lower() as usize
+        self._buffer.remaining()
     }
 }
 
@@ -167,46 +180,13 @@ impl Read for Stdin {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let mut size = 0;
 
-        if !self._buffer.is_empty() {
-            if self._buffer.len() >= buf.len() {
-                buf.copy_from_slice(&self._buffer.as_ref()[..buf.len()]);
-                self._buffer = self._buffer.slice(buf.len()..);
-                return Ok(buf.len());
-            } else {
-                buf[..self._buffer.len()].copy_from_slice(&self._buffer.as_ref());
-                size = self._buffer.len();
-            }
-        }
-
-        while self.poll_data()? && !self._buffer.is_empty() {
-            let remain = buf.len() - size;
-            if self._buffer.len() >= remain {
-                buf[size..].copy_from_slice(&self._buffer.as_ref()[..remain]);
-                self._buffer = self._buffer.slice(remain..);
-                return Ok(buf.len());
-            } else {
-                buf[size..size + self._buffer.len()].copy_from_slice(&self._buffer.as_ref());
-                size += self._buffer.len();
-                self._buffer = self._buffer.slice(self._buffer.len()..);
-            }
-        }
-
-        Ok(size)
-    }
-
-    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
-        let mut size = 0;
-
-        // copy the now chunk to buf
-        if !self._buffer.is_empty() {
-            size += self._buffer.len();
-            buf.extend(&self._buffer);
-        }
-
-        // poll new data until EOF
         while self.poll_data()? {
-            size += self._buffer.len();
-            buf.extend(&self._buffer);
+            let next_offset = size + cmp::min(self._buffer.remaining(), buf.len() - size);
+            self._buffer.copy_to_slice(&mut buf[size..next_offset]);
+            if next_offset == buf.len() {
+                return Ok(next_offset);
+            }
+            size = next_offset;
         }
 
         Ok(size)

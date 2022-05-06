@@ -10,15 +10,18 @@ mod stdio;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::thread;
 use std::time::SystemTime;
 
 use anyhow::{anyhow, Result};
+use hyper::body::Bytes;
 use hyper::header::HeaderValue;
-use hyper::{Body, Request, Response};
+use hyper::http::{request, response};
+use hyper::{Body, Error};
 use log::{debug, info};
+use tokio::sync::mpsc::Receiver;
+use tokio::sync::oneshot;
 use wasmer_wasi::WasiState;
 
 use super::Runner;
@@ -89,29 +92,33 @@ pub(crate) struct WasmRunner {
 }
 
 impl Runner for WasmRunner {
-    fn run(&self, req: Request<Body>, res: &mut Response<Body>) -> Result<()> {
+    fn run(
+        &self,
+        req_head: request::Parts,
+        req_body: Receiver<Result<Bytes, Error>>,
+        res_head: &mut response::Parts,
+    ) -> oneshot::Receiver<Result<Body>> {
         // invoke count ++
         self._inner._invoke_count.fetch_add(1, Ordering::Relaxed);
 
-        let (sender, receiver) = channel();
+        // set content type
+        res_head
+            .headers
+            .insert("Content-Type", self._inner._response_content_type.clone());
+
+        let (sender, receiver) = oneshot::channel();
 
         let runner = self.clone();
         // run function in thread pool
         self._inner._worker.execute(move || {
             // send the run result
-            sender.send(runner.run_inner(req)).unwrap();
+            if sender.send(runner.run_inner(req_head, req_body)).is_err() {
+                error!("Cannot send run result because the receiver has dropped");
+            }
         });
 
-        // wait for result from thread pool
-        let res_body = receiver.recv()?;
-
-        // try get response body
-        *res.body_mut() = res_body?;
-
-        // set content type
-        res.headers_mut()
-            .insert("Content-Type", self._inner._response_content_type.clone());
-        Ok(())
+        // return the result from thread pool
+        receiver
     }
 
     /// get the scale number tuple: (now replicas, available replicas, invoke count)
@@ -225,20 +232,24 @@ impl WasmRunner {
     /// run the function in thread pool
     /// return the stdout as response body
     #[allow(unused_mut)]
-    pub(crate) fn run_inner(&self, req: Request<Body>) -> Result<Body> {
+    pub(crate) fn run_inner(
+        &self,
+        req_head: request::Parts,
+        req_body: Receiver<Result<Bytes, Error>>,
+    ) -> Result<Body> {
         let start_time = SystemTime::now();
         let thread_id = thread::current().id();
         let func_process = &self._inner._func_process;
 
         // get the environment from heads (wasm mode does not inherit the environment)
         let environment = if self._inner._inject_cgi_headers {
-            inject_environment(false, &req)
+            inject_environment(false, &req_head)
         } else {
             HashMap::new()
         };
 
         // init the stdio for function
-        let stdin = Box::new(Stdin::new(req.into_body())?);
+        let stdin = Box::new(Stdin::new(req_body));
         let stdout = Box::new(Stdout::new());
 
         let stderr = Box::new(Stderr::new(

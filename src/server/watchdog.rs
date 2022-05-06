@@ -5,13 +5,14 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
-use hyper::body::to_bytes;
+use hyper::body::{to_bytes, Bytes, HttpBody};
 use hyper::header::CONTENT_TYPE;
 use hyper::http::HeaderValue;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use lazy_static::lazy_static;
 use log::error;
+use tokio::sync::mpsc;
 
 use super::metrics::{IN_FLIGHT, REQUESTS_TOTAL, REQUEST_DURATION_HISTOGRAM};
 use super::shutdown_signal;
@@ -71,7 +72,7 @@ where
 
 impl<R> Service<Request<Body>> for WatchdogService<R>
 where
-    R: Runner + Clone + Send + 'static,
+    R: Runner + Clone + Send + Sync + 'static,
 {
     type Response = Response<Body>;
     type Error = hyper::Error;
@@ -150,13 +151,32 @@ async fn handle<R: Runner>(runner: R, req: Request<Body>) -> Result<Response<Bod
             let label;
 
             // for every other path and method
-            if let Err(ref err) = runner.run(req, &mut response) {
-                *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                *response.body_mut() = Body::from(err.to_string());
-                error!("{}", err.to_string());
-                label = ["500", method];
-            } else {
-                label = ["200", method];
+            let (parts, body) = req.into_parts();
+            let (sender, receiver) =
+                mpsc::channel(get_body_chunk_size(body.size_hint().lower() as usize));
+
+            // spawn to fetch rest request body and send to stdin
+            tokio::spawn(async { recv_body(sender, body).await });
+
+            let mut res_header = response.into_parts().0;
+
+            match runner.run(parts, receiver, &mut res_header).await {
+                Ok(Ok(body)) => {
+                    response = Response::from_parts(res_header, body);
+                    label = ["200", method];
+                }
+                Ok(Err(err)) => {
+                    res_header.status = StatusCode::INTERNAL_SERVER_ERROR;
+                    response = Response::from_parts(res_header, Body::from(err.to_string()));
+                    error!("{}", err.to_string());
+                    label = ["500", method];
+                }
+                Err(err) => {
+                    res_header.status = StatusCode::INTERNAL_SERVER_ERROR;
+                    response = Response::from_parts(res_header, Body::from(err.to_string()));
+                    error!("{}", err.to_string());
+                    label = ["500", method];
+                }
             }
 
             REQUESTS_TOTAL.with_label_values(&label).inc();
@@ -175,6 +195,26 @@ async fn handle<R: Runner>(runner: R, req: Request<Body>) -> Result<Response<Bod
 lazy_static! {
     static ref CONTENT_ALLOW_ALL: HeaderValue = "*".parse().unwrap();
     static ref JSON_CONTENT_TYPE: HeaderValue = "application/json; charset=utf-8".parse().unwrap();
+}
+
+/// get the body channel buf size
+fn get_body_chunk_size(b: usize) -> usize {
+    return if b <= (1 << 10) {
+        1
+    } else if b <= (1 << 15) {
+        b >> 10
+    } else {
+        64
+    };
+}
+
+/// receive the body data and send to channel
+async fn recv_body(send: mpsc::Sender<Result<Bytes, hyper::Error>>, mut body: Body) {
+    while let Some(buf) = body.data().await {
+        if let Err(e) = send.send(buf).await {
+            error!("Body data send error: {}", e);
+        }
+    }
 }
 
 /// helper function, buffer the hole request body to string

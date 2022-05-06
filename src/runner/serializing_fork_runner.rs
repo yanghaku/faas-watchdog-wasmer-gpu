@@ -1,16 +1,11 @@
 use crate::runner::Runner;
 use crate::WatchdogConfig;
 use anyhow::Result;
-use hyper::{Body, Request, Response};
 
 #[derive(Clone)]
 pub(crate) struct SerializingForkRunner;
 
-impl Runner for SerializingForkRunner {
-    fn run(&self, _: Request<Body>, _: &mut Response<Body>) -> Result<()> {
-        todo!()
-    }
-}
+impl Runner for SerializingForkRunner {}
 
 impl SerializingForkRunner {
     pub(crate) fn new(config: WatchdogConfig) -> Result<Self> {

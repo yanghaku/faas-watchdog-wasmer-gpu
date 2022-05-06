@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::env;
 
 use anyhow::{anyhow, Result};
-use hyper::{Body, Request};
+use hyper::http::request::Parts;
 use lazy_static::lazy_static;
 
 lazy_static! {
@@ -34,23 +34,23 @@ pub(crate) fn environment_vars() -> &'static HashMap<String, String> {
 }
 
 #[inline(always)]
-pub(crate) fn inject_environment(inherit: bool, req: &Request<Body>) -> HashMap<String, String> {
+pub(crate) fn inject_environment(inherit: bool, req_head: &Parts) -> HashMap<String, String> {
     let mut res = if inherit {
         ENVIRONMENT_VARS.clone()
     } else {
         HashMap::new()
     };
 
-    for (k, v) in req.headers().iter() {
+    for (k, v) in req_head.headers.iter() {
         if let Ok(val) = v.to_str() {
             let key = format!("Http_{}", k.to_string().replace('-', "_"));
             res.insert(key, val.to_string());
         }
     }
 
-    res.insert("Http_Path".to_string(), req.uri().path().to_string());
-    res.insert("Http_Method".to_string(), req.method().to_string());
-    if let Some(q) = req.uri().query() {
+    res.insert("Http_Path".to_string(), req_head.uri.path().to_string());
+    res.insert("Http_Method".to_string(), req_head.method.to_string());
+    if let Some(q) = req_head.uri.query() {
         res.insert("Http_Query".to_string(), q.to_string());
     }
     // todo: Http_Transfer_Encoding
